@@ -173,6 +173,32 @@ body::before {
   background: #111111;
 }
 
+.terminal-copy-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  border-radius: 0;
+  border: 1px solid #d1d1d1;
+  background: #0b0b0b;
+  color: #d9d9d9;
+  padding: 0.34rem 0.56rem;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+.terminal-copy-action:hover {
+  border-color: #e0e0e0;
+  background: #111111;
+}
+
+.terminal-copy-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
 .terminal-card {
   border-radius: 0;
   border: 1px solid var(--panel-border);
@@ -183,6 +209,12 @@ body::before {
 .terminal-stack {
   display: grid;
   gap: 1rem;
+}
+
+.terminal-command-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .terminal-aside {
@@ -226,6 +258,10 @@ body::before {
 @media (min-width: 1080px) {
   .terminal-grid {
     grid-template-columns: minmax(0, 1.08fr) minmax(19rem, 0.92fr);
+  }
+
+  .terminal-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .terminal-aside {
