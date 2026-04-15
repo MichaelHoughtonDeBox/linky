@@ -1,25 +1,53 @@
 {
-  "name": "linkie",
-  "version": "0.1.0",
-  "description": "One link to open them all. Generate a single URL that opens multiple links at once.",
+  "name": "@linky/linky",
+  "version": "0.2.0",
+  "description": "Create one short Linky URL that opens a bundle of links.",
   "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "cli",
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
+    "linky": "./cli/index.js",
     "linkie": "./cli/index.js"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 4040",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start --port 4040",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck",
+    "db:schema": "psql \"$DATABASE_URL\" -f db/schema.sql"
   },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "keywords": [
+    "linky",
+    "url-shortener",
+    "links",
+    "agents",
+    "cli"
+  ],
   "dependencies": {
     "next": "16.2.3",
+    "pg": "^8.20.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

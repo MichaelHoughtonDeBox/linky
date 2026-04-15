@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Bricolage_Grotesque, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const linkyDisplay = Bricolage_Grotesque({
+  variable: "--font-linky-display",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const linkyMono = IBM_Plex_Mono({
+  variable: "--font-linky-mono",
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Linkie - Open multiple links at once",
-  description: "One link to open them all. Paste a Linkie URL to auto-open multiple links in new tabs.",
+  title: "Linky - One short link for many tabs",
+  description:
+    "Create one short Linky URL that opens all your saved links from a single landing page.",
 };
 
 export default function RootLayout({
@@ -25,7 +27,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${linkyDisplay.variable} ${linkyMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

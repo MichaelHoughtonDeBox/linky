@@ -1,138 +1,223 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
-function decodeUrls(hash: string): string[] {
-  if (!hash || hash.length < 2) return [];
-  try {
-    const encoded = hash.slice(1); // remove #
-    const json = atob(encoded);
-    const urls = JSON.parse(json);
-    if (Array.isArray(urls) && urls.every((u) => typeof u === "string")) {
-      return urls;
-    }
-  } catch {
-    // invalid hash
+import type { CreateLinkyResponse } from "@/lib/linky/types";
+
+type ApiError = {
+  error?: string;
+  code?: string;
+};
+
+function parseUrlsFromInput(input: string): string[] {
+  // Trim and drop empty lines so pasting from notes and chat works cleanly.
+  return input
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function buildCliPreviewCommand(urlCount: number): string {
+  const urlArgs =
+    urlCount > 0
+      ? Array.from({ length: Math.min(urlCount, 2) }, (_, i) => `https://url-${i + 1}.com`).join(" ")
+      : "https://url-1.com https://url-2.com";
+
+  return `npx @linky/linky create ${urlArgs} --json`;
+}
+
+function humanizeApiError(payload: ApiError, status: number): string {
+  // Keep infrastructure details out of the primary UX message.
+  if (payload.code === "RATE_LIMITED") {
+    return "Too many create requests right now. Please wait a moment and retry.";
   }
-  return [];
-}
 
-function encodeUrls(urls: string[]): string {
-  return btoa(JSON.stringify(urls));
-}
+  if (payload.code === "INVALID_URLS") {
+    return payload.error ?? "Please check your URL list format.";
+  }
 
-/**
- * Opens multiple URLs by programmatically clicking hidden <a> tags.
- * This is more reliable than window.open() which browsers aggressively block.
- */
-function openAllUrls(urls: string[]) {
-  urls.forEach((url) => {
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  });
+  if (status >= 500) {
+    return "Linky is temporarily unavailable. Try again in a few seconds.";
+  }
+
+  return payload.error ?? "Failed to create Linky.";
 }
 
 export default function Home() {
-  const [urls, setUrls] = useState<string[]>([]);
   const [input, setInput] = useState("");
-  const hasUrls = urls.length > 0;
-  const autoOpenAttempted = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [createdLinky, setCreatedLinky] = useState<CreateLinkyResponse | null>(
+    null,
+  );
+  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    const hash = window.location.hash;
-    const decoded = decodeUrls(hash);
-    if (decoded.length > 0) {
-      setUrls(decoded);
+  const parsedUrls = useMemo(() => parseUrlsFromInput(input), [input]);
+  const cliPreviewCommand = useMemo(() => buildCliPreviewCommand(parsedUrls.length), [parsedUrls.length]);
+
+  const handleCreate = async () => {
+    setErrorMessage(null);
+    setCopied(false);
+
+    if (parsedUrls.length === 0) {
+      setErrorMessage("Add at least one URL before creating a Linky.");
+      return;
     }
-  }, []);
 
-  // Auto-open is unlikely to work without a user gesture, so we always show
-  // the Open All button. But we try once anyway.
-  useEffect(() => {
-    if (urls.length > 0 && !autoOpenAttempted.current) {
-      autoOpenAttempted.current = true;
-      openAllUrls(urls);
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/linkies", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          urls: parsedUrls,
+          source: "web",
+        }),
+      });
+
+      const data = (await response.json()) as CreateLinkyResponse & ApiError;
+
+      if (!response.ok) {
+        setErrorMessage(humanizeApiError(data, response.status));
+        setCreatedLinky(null);
+        return;
+      }
+
+      setCreatedLinky({
+        slug: data.slug,
+        url: data.url,
+      });
+    } catch {
+      setErrorMessage("Could not reach the Linky API. Please try again.");
+      setCreatedLinky(null);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [urls]);
-
-  const handleCreate = () => {
-    const parsed = input
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    if (parsed.length === 0) return;
-    const hash = encodeUrls(parsed);
-    const linkieUrl = `${window.location.origin}/#${hash}`;
-    navigator.clipboard.writeText(linkieUrl);
-    alert("Linkie URL copied to clipboard!");
   };
 
-  // Landing page with URLs to open
-  if (hasUrls) {
-    return (
-      <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-        <main className="flex flex-1 w-full max-w-2xl flex-col items-center justify-center py-16 px-6">
-          <h1 className="text-4xl font-bold tracking-tight text-black dark:text-white mb-2">
-            Linkie
+  const handleCopy = async () => {
+    if (!createdLinky) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(createdLinky.url);
+      setCopied(true);
+    } catch {
+      setErrorMessage("Clipboard copy failed. You can copy the URL manually.");
+    }
+  };
+
+  return (
+    <div className="terminal-stage flex flex-1 items-start justify-center px-6 py-10 sm:py-12">
+      <main className="terminal-shell w-full max-w-6xl p-6 sm:p-8 lg:p-10">
+        <header className="mb-7">
+          <p className="terminal-label mb-3">CLI-FIRST LINK ORCHESTRATOR</p>
+          <h1 className="display-title mb-2 text-5xl leading-[0.9] font-semibold text-foreground sm:text-6xl">
+            Linky
           </h1>
-          <p className="text-zinc-500 dark:text-zinc-400 mb-8">
-            {urls.length} link{urls.length === 1 ? "" : "s"} ready to open.
+          <p className="terminal-muted max-w-3xl text-sm leading-relaxed sm:text-base">
+            Build one short launch URL for a full working set of tabs. Perfect for
+            standups, incident response, and agent handoffs.
           </p>
+          <div className="terminal-metrics mt-4">
+            <span className="terminal-chip">
+              {parsedUrls.length} URL{parsedUrls.length === 1 ? "" : "s"} queued
+            </span>
+            <span className="terminal-chip">slug: auto-generated</span>
+          </div>
+        </header>
 
-          <button
-            onClick={() => openAllUrls(urls)}
-            className="mb-8 rounded-full bg-black text-white dark:bg-white dark:text-black px-8 py-3 text-lg font-medium hover:opacity-80 transition-opacity"
-          >
-            Open All ({urls.length})
-          </button>
+        <div className="terminal-stack">
+          <section className="terminal-card p-4 sm:p-5 lg:p-6">
+            <label htmlFor="urls" className="terminal-label mb-2 block">
+              URL BUNDLE INPUT
+            </label>
+            <textarea
+              id="urls"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={"https://github.com/org/repo/pull/1\nhttps://github.com/org/repo/pull/2\nhttps://linear.app/org/issue/ABC-123"}
+              className="terminal-input min-h-[17rem] resize-y overflow-x-auto text-sm leading-relaxed"
+              spellCheck={false}
+            />
+            <p className="terminal-muted mt-3 text-xs sm:text-sm">
+              Paste one URL per line. Duplicate URLs are normalized and de-duped
+              server-side.
+            </p>
+            <div className="terminal-card mt-4 overflow-hidden p-3">
+              <p className="terminal-label mb-2">CLI PREVIEW</p>
+              <code className="block overflow-x-auto text-xs text-foreground sm:text-sm">
+                {cliPreviewCommand}
+              </code>
+            </div>
+          </section>
 
-          <ul className="w-full space-y-2">
-            {urls.map((url, i) => (
-              <li key={i}>
+          <section className="terminal-card p-4 sm:p-5 lg:p-6">
+            <p className="terminal-label mb-2 block">CREATE SHORT LINKY</p>
+            <p className="terminal-muted mb-5 text-xs sm:text-sm">
+              Keep it simple for now: Linky always auto-generates a unique slug.
+            </p>
+
+            <button
+              onClick={handleCreate}
+              disabled={isSubmitting}
+              className="terminal-action w-full px-6 py-3 text-sm sm:text-base"
+            >
+              {isSubmitting ? "Creating Linky..." : "Create Linky"}
+            </button>
+
+            <p className="terminal-muted mt-3 text-xs">
+              Primary action generates one short launch URL from your bundle.
+            </p>
+          </section>
+
+          {errorMessage ? (
+            <section
+              className="terminal-card px-4 py-3 text-sm"
+              style={{
+                borderColor:
+                  "color-mix(in srgb, var(--danger) 52%, var(--panel-border) 48%)",
+                color: "var(--danger)",
+              }}
+            >
+              {errorMessage}
+            </section>
+          ) : null}
+
+          {createdLinky ? (
+            <section className="terminal-card p-4 sm:p-5">
+              <p className="terminal-label mb-2">LINKY READY</p>
+              <a
+                href={createdLinky.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block truncate text-sm text-foreground underline-offset-4 hover:underline"
+              >
+                {createdLinky.url}
+              </a>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={handleCopy}
+                  className="terminal-secondary px-4 py-2 text-sm"
+                >
+                  {copied ? "Copied" : "Copy URL"}
+                </button>
                 <a
-                  href={url}
+                  href={createdLinky.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full rounded-lg border border-zinc-200 dark:border-zinc-800 px-4 py-3 text-sm text-blue-600 dark:text-blue-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors truncate"
+                  className="terminal-secondary px-4 py-2 text-sm"
                 >
-                  {url}
+                  Open Linky
                 </a>
-              </li>
-            ))}
-          </ul>
-        </main>
-      </div>
-    );
-  }
-
-  // Home page - create a Linkie
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-2xl flex-col items-center justify-center py-16 px-6">
-        <h1 className="text-4xl font-bold tracking-tight text-black dark:text-white mb-2">
-          Linkie
-        </h1>
-        <p className="text-zinc-500 dark:text-zinc-400 mb-8">
-          One link to open them all.
-        </p>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={"Paste URLs here, one per line...\nhttps://github.com/org/repo/pull/1\nhttps://github.com/org/repo/pull/2"}
-          className="w-full h-48 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3 text-sm text-black dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white resize-none mb-4"
-        />
-        <button
-          onClick={handleCreate}
-          className="rounded-full bg-black text-white dark:bg-white dark:text-black px-8 py-3 text-base font-medium hover:opacity-80 transition-opacity"
-        >
-          Create Linkie
-        </button>
+              </div>
+            </section>
+          ) : null}
+        </div>
       </main>
     </div>
   );
