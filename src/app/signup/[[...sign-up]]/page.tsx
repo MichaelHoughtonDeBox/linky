@@ -21,7 +21,8 @@ export default function SignUpPage() {
           <p className="terminal-muted max-w-2xl text-sm leading-relaxed sm:text-base">
             Accounts let you save, edit, and share your launch bundles across
             devices, claim bundles an agent created for you, and collaborate
-            in teams.
+            in teams. An account also unlocks the personalized tabs on any
+            Linky whose owner has attached rules for you.
           </p>
 
           <div className="mt-6 flex justify-center sm:justify-start">

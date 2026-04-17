@@ -66,6 +66,16 @@ function buildCurlPreviewCommand(urls: string[], baseUrl: string): string {
   ].join("\n");
 }
 
+// Static sample command showing the Sprint 2.5 --policy flag. The demo form
+// above always creates a simple, public Linky; this block exists purely so
+// readers see what the agent-first "born personalized" path looks like in
+// the CLI. The policy file contents are documented in /docs.
+const POLICY_CREATE_COMMAND = [
+  `linky create https://acme.com/docs https://acme.com/status \\`,
+  `  --policy ./acme-team.policy.json \\`,
+  `  --title "Acme standup"`,
+].join("\n");
+
 function humanizeApiError(payload: ApiError, status: number): string {
   if (payload.code === "RATE_LIMITED") {
     return "Too many create requests right now. Please wait a moment and retry.";
@@ -228,6 +238,17 @@ export function LiveLinkyDemo() {
             Paste a few URLs below, create one Linky, and see how quickly many
             links turn into one launch link.
           </p>
+          <p className="terminal-muted mt-3 text-xs sm:text-sm">
+            This form creates a simple, public Linky. To make the same Linky
+            open different tabs per viewer, author a policy from the
+            Personalize panel in the dashboard, or attach one at create time
+            with <code>--policy</code> (CLI) or <code>resolutionPolicy</code>{" "}
+            (API / SDK). See{" "}
+            <Link href="/docs" className="underline-offset-4 hover:underline">
+              /docs
+            </Link>{" "}
+            for the policy shape.
+          </p>
         </div>
 
         <section className="terminal-card p-4 sm:p-5">
@@ -350,6 +371,14 @@ export function LiveLinkyDemo() {
         <div className="site-command-grid mt-8">
           <CommandBlock title="CLI preview" command={cliPreviewCommand} />
           <CommandBlock title="curl preview" command={curlPreviewCommand} />
+        </div>
+
+        <div className="mt-6">
+          <CommandBlock
+            title="With a policy at create time"
+            command={POLICY_CREATE_COMMAND}
+            note="Agent-first path (Sprint 2.5). The Linky is locked down from the first click — no public window. Anonymous creates stay immutable until claimed."
+          />
         </div>
       </div>
     </section>

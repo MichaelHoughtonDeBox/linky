@@ -17,7 +17,9 @@ export default function SignInPage() {
           </h1>
           <p className="terminal-muted max-w-2xl text-sm leading-relaxed sm:text-base">
             Sign in to manage your launch bundles, edit their URLs and
-            metadata, and collaborate on team bundles.
+            metadata, and collaborate on team bundles. Signing in also
+            unlocks the personalized tabs on any Linky whose owner has
+            attached rules for you.
           </p>
 
           <div className="mt-6 flex justify-center sm:justify-start">

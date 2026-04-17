@@ -10,6 +10,8 @@ const USE_CASES = [
   "Run incident response checklists from one shareable URL.",
   "Hand off full context packs between agents and teammates.",
   "Package research sessions for demos, clients, and async updates.",
+  "Ship a single team standup Linky — each teammate opens their own queue, drafts, and inbox from the same URL.",
+  "Route signed-in partners to partner-scoped URLs while staff open internal runbooks from the same Linky.",
 ];
 
 const FAQ_ITEMS = [
@@ -32,6 +34,21 @@ const FAQ_ITEMS = [
     question: "What happens when someone opens a Linky URL?",
     answer:
       "They land on /l/[slug], click Open All, and launch every saved tab with manual fallback links if popups are blocked.",
+  },
+  {
+    question: "How does personalization work?",
+    answer:
+      "Attach a resolution policy to any Linky. On every click, rules evaluate the viewer's Clerk identity — email, email domain, user id, GitHub login, Google email, org memberships — and the launcher opens the matching tab set. Unmatched viewers and anonymous viewers fall through to the public launch bundle, so the same URL stays safe to share publicly.",
+  },
+  {
+    question: "Do viewers need an account to see personalized tabs?",
+    answer:
+      "No account is needed for the public bundle — it opens for anyone. To see a personalized tab set the viewer signs in with Clerk, and the launcher nudges them when a policy is in play but they haven't signed in yet.",
+  },
+  {
+    question: "Can my agent attach a policy when creating a Linky?",
+    answer:
+      "Yes. POST /api/links accepts an optional resolutionPolicy in the same request, and the CLI exposes linky create ... --policy file.json (use --policy - to pipe from stdin). The Linky is locked down from the first click — no window where an unrestricted version is live. Anonymous Linkies are immutable until claimed, so if your agent attaches a policy without signing in, pass email alongside it so the claim URL lands with the eventual human owner.",
   },
 ];
 
@@ -57,6 +74,11 @@ export default async function Home() {
           <p className="terminal-muted max-w-3xl text-sm leading-relaxed sm:text-base">
             Give Linky a list of URLs and get back one short launcher link.
             Purpose-built for agents, workflows, and fast context handoffs.
+          </p>
+          <p className="terminal-muted mt-2 max-w-3xl text-sm leading-relaxed sm:text-base">
+            Attach a policy and the same Linky opens different tabs for
+            different viewers — identity resolves at click time, unmatched
+            viewers get the public bundle.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link href="/docs" className="terminal-secondary px-4 py-2 text-sm">
