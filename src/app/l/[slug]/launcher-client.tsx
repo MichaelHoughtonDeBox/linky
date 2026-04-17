@@ -47,9 +47,26 @@ export function LinkyLauncher({
   baseUrl,
 }: LinkyLauncherProps) {
   const [openSummary, setOpenSummary] = useState<OpenSummary | null>(null);
-  const createdDateLabel = useMemo(() => {
-    return new Date(createdAt).toLocaleString();
-  }, [createdAt]);
+
+  // Locale-dependent formatting is the classic hydration-mismatch trap:
+  // `toLocaleString()` without an explicit locale uses the runtime default,
+  // which differs between Node (often en-US) and the browser (user config).
+  // We pin locale AND timezone to produce a byte-identical string on server
+  // and client. UTC is an acceptable display choice for a public launcher
+  // chip — precise local time is not the value being communicated here.
+  const createdDateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "UTC",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date(createdAt)),
+    [createdAt],
+  );
 
   return (
     <div className="terminal-stage flex flex-1 items-start justify-center px-5 py-5 sm:py-6">
@@ -68,7 +85,7 @@ export function LinkyLauncher({
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="terminal-chip">{urls.length} links</span>
             <span className="terminal-chip">slug: {slug}</span>
-            <span className="terminal-chip">created: {createdDateLabel}</span>
+            <span className="terminal-chip">created: {createdDateLabel} UTC</span>
           </div>
         </header>
 
