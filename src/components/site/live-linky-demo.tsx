@@ -228,19 +228,20 @@ export function LiveLinkyDemo() {
         </div>
       </div>
 
-      <div className="site-demo-section">
+      <div id="demo" className="site-demo-section">
         <div className="site-demo-lede">
-          <p className="terminal-label mb-2">Use it right now</p>
-          <h2 className="display-title mb-2 text-3xl font-semibold text-foreground sm:text-4xl">
-            Try Linky and see it work.
+          <p className="terminal-label mb-3">Try it now</p>
+          <h2 className="display-title mb-3 text-3xl font-semibold text-foreground sm:text-4xl">
+            Paste a few URLs. Get one Linky back.
           </h2>
           <p className="terminal-muted text-sm leading-relaxed sm:text-base">
-            Paste a few URLs below, create one Linky, and see how quickly many
-            links turn into one launch link.
+            Anonymous, free, and live — no signup, no credit card. Create a
+            Linky right here and see how quickly many links turn into one
+            launch URL you can share anywhere.
           </p>
-          <p className="terminal-muted mt-3 text-xs sm:text-sm">
-            This form creates a simple, public Linky. To make the same Linky
-            open different tabs per viewer, author a policy from the
+          <p className="terminal-muted mt-4 text-xs sm:text-sm">
+            This form creates a simple, public Linky. Need the same Linky to
+            open different tabs per viewer? Author a policy from the
             Personalize panel in the dashboard, or attach one at create time
             with <code>--policy</code> (CLI) or <code>resolutionPolicy</code>{" "}
             (API / SDK). See{" "}

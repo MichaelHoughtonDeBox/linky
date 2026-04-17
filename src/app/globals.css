@@ -147,11 +147,67 @@ body::before {
 }
 
 .site-hero {
-  margin-bottom: clamp(2rem, 6vw, 4rem);
+  margin-bottom: clamp(2.5rem, 6vw, 4.5rem);
+  max-width: 46rem;
 }
 
 .site-section {
-  margin-top: clamp(3rem, 8vw, 5.5rem);
+  margin-top: clamp(3.25rem, 8vw, 6rem);
+}
+
+/*
+ * Shared lede block used above the Use cases / FAQ sections so those
+ * headers have the same kicker-over-title rhythm as the hero.
+ */
+.site-section-lede {
+  max-width: 42rem;
+}
+
+/*
+ * Hero benefit strip: three scannable, scan-in-one-breath lines directly
+ * below the hero lead. Divider-less vertical list with generous line
+ * height and a subtle chevron — lets a first-time visitor understand
+ * what Linky gives them before they decide whether to keep reading.
+ */
+.site-benefit-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+  max-width: 46rem;
+}
+
+.site-benefit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+@media (min-width: 640px) {
+  .site-benefit-item {
+    font-size: 1rem;
+  }
+}
+
+.site-benefit-marker {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 1rem;
+  color: var(--foreground);
+  font-weight: 600;
+  padding-top: 0.08rem;
+}
+
+/*
+ * The hero CTA row sits farther from the last paragraph now — with the
+ * added benefit strip + personalization line above, it needs to feel
+ * like a distinct "act" rather than glued to prose.
+ */
+.site-hero-cta-row {
+  padding-top: 0.25rem;
 }
 
 .site-step-item {
@@ -179,7 +235,12 @@ body::before {
 
 .site-divider-item {
   border-bottom: 1px solid var(--panel-border);
-  padding: 0.8rem 0;
+  /*
+   * Bumped from 0.8rem → 1.15rem so multi-line FAQ answers and
+   * use-case lines get breathing room above/below — the previous
+   * value made dense blocks of prose feel glued together.
+   */
+  padding: 1.15rem 0;
 }
 
 .site-command-block {
