@@ -22,6 +22,7 @@ The short URL resolves to `/l/[slug]`, where users click **Open All** to launch 
 - **Anonymous creation** — public API + CLI + skill + web with basic IP rate limiting. No account required to ship a Linky.
 - **Accounts (Clerk)** — users, organizations, team-owned launch bundles, SSO-ready.
 - **Editable bundles** — rename, re-order URLs, add per-URL notes/tags/open policies, soft-delete. Every edit is captured as an append-only version.
+- **Identity-aware resolution (Sprint 2)** — attach a rules-engine policy and `/l/[slug]` serves different tabs to different viewers based on their Clerk identity. Pure, testable, previewable in the dashboard.
 - **Claim flow** — agents can create a Linky on your behalf and return a claim URL; clicking it binds ownership to your Clerk account in one click.
 - **Billing scaffold (Stripe direct)** — Stripe Customers minted per user and per organization, webhook pipeline ready for plans.
 - **Launcher page** with popup-blocking guidance and manual fallback links.
@@ -37,9 +38,12 @@ Skill / WebUI / CLI / SDK / curl / agent handoff
 POST /api/links  ---> Neon Postgres (`linkies`, `users`, `organizations`, `linky_versions`, `claim_tokens`)
         |
         v
-   /l/[slug] public launcher
-        |
-   /dashboard (signed-in)
+   /l/[slug] public launcher  ── evaluatePolicy(resolution_policy, viewerContext)
+        |                                           |
+        |                                           v
+        |                           Clerk session → ViewerContext
+        v                           (email, emailDomain, githubLogin,
+   /dashboard (signed-in)            googleEmail, orgIds, orgSlugs)
         |
    /claim/[token]  (agent → human handoff)
 ```
@@ -76,6 +80,27 @@ STRIPE_WEBHOOK_SIGNING_SECRET=whsec_...
 LINKY_RATE_LIMIT_WINDOW_MS=60000
 LINKY_RATE_LIMIT_MAX_REQUESTS=30
 ```
+
+#### Wiring Clerk social providers (for identity-aware resolution)
+
+Sprint 2 uses Clerk as the sole viewer-identity primitive. To let viewers
+sign in with Google / GitHub (and have the DSL's `googleEmail` +
+`githubLogin` fields populate at resolve time), enable those providers in
+the Clerk dashboard:
+
+1. In Clerk, navigate to **User & Authentication → Social Connections**.
+2. Enable **Google** and **GitHub**. Development-mode shared credentials
+   are fine for local dogfooding; provide your own OAuth credentials for
+   production.
+3. Ensure **Email address** is a required identifier and that the primary
+   email is populated on sign-up. The policy DSL matches on
+   `viewer.email` / `viewer.emailDomain` and a missing primary email
+   silently disables those rules for that viewer.
+
+No code change is required — `buildViewerContext` reads
+`user.externalAccounts` and maps `provider === "oauth_github"` to
+`githubLogin` and `"oauth_google"` to `googleEmail`. If Clerk renames
+these providers in a future release, `viewer-context.test.ts` turns red.
 
 #### Wiring webhooks
 
@@ -172,16 +197,42 @@ Errors:
 ### `PATCH /api/links/:slug` (owner-only)
 
 Edit a Linky. Every edit inserts a row into `linky_versions` so history
-is never lost. Request body (all fields optional, at least one required):
+is never lost — including policy edits (the prior policy is snapshotted
+alongside urls + metadata + title + description). Request body (all fields
+optional, at least one required):
 
 ```json
 {
   "title": "Release review (v2)",
   "description": null,
   "urls": ["https://example.com"],
-  "urlMetadata": [{ "note": "rebuilt" }]
+  "urlMetadata": [{ "note": "rebuilt" }],
+  "resolutionPolicy": {
+    "version": 1,
+    "rules": [
+      {
+        "name": "Engineering team",
+        "showBadge": true,
+        "when": {
+          "op": "and",
+          "of": [
+            { "op": "signedIn" },
+            { "op": "endsWith", "field": "emailDomain", "value": "acme.com" }
+          ]
+        },
+        "tabs": [
+          { "url": "https://linear.app/acme/my-issues", "note": "Your queue" },
+          { "url": "https://github.com/acme/app/pulls?q=author:@me" }
+        ]
+      }
+    ]
+  }
 }
 ```
+
+Send `"resolutionPolicy": null` to clear the policy; omit the field to
+leave it untouched. See the **Identity-aware resolution** section below
+for the full DSL.
 
 ### `DELETE /api/links/:slug` (owner-only)
 
@@ -303,6 +354,100 @@ so failures are explainable. Claiming is a no-op on bundles that already
 have an owner (prevents a race from transferring a claimed Linky a
 second time).
 
+## Identity-aware resolution (Sprint 2)
+
+The killer primitive: one Linky, N personalized sessions.
+
+A Linky's owner can attach a `resolutionPolicy` — a rules-engine JSON blob
+stored on `linkies.resolution_policy` — and `/l/[slug]` will evaluate it
+server-side on every click. The viewer's Clerk identity drives which
+rule matches; unmatched and anonymous viewers always fall through to the
+public URL list. The resolver is pure, tested exhaustively
+(`src/lib/linky/policy.test.ts`), and shares its evaluator with the
+dashboard's "Preview as" feature so authors see exactly what viewers
+will see.
+
+### Policy shape
+
+```ts
+type ResolutionPolicy = {
+  version: 1;
+  rules: Rule[];
+};
+
+type Rule = {
+  id: string;                  // ULID-style, minted server-side if absent
+  name?: string;               // owner-facing label; surfaced to viewer only if showBadge
+  when: Condition;             // predicate over the viewer
+  tabs: { url: string; note?: string }[];
+  stopOnMatch: boolean;        // default: true (first-match-wins)
+  showBadge: boolean;          // default: false (keep owner taxonomy private)
+};
+```
+
+### Operators (v1)
+
+- **Leaf** (match a viewer field): `equals`, `in`, `endsWith`, `exists`
+- **Viewer state** (no field argument): `always`, `anonymous`, `signedIn`
+- **Compound** (use `{ op, of: [...] }`): `and`, `or`, `not`
+
+### Viewer fields
+
+- **Singular**: `email`, `emailDomain`, `userId`, `githubLogin`, `googleEmail`
+- **Set-valued** (use with `in`): `orgIds`, `orgSlugs`
+
+Set-valued fields reflect the viewer's **full Clerk membership list** —
+not their active workspace. A rule like
+`{ "op": "in", "field": "orgSlugs", "value": ["acme"] }` matches whenever
+Acme appears anywhere in the viewer's memberships, regardless of
+navigation context.
+
+### Operator × field compatibility (parse-time enforced)
+
+`in` accepts both kinds of fields, with different semantics:
+
+- Singular field → "viewer's value equals one of `value[]`"
+  (e.g. `email in ["alice@x.com", "bob@x.com"]`)
+- Set-valued field → "viewer's set intersects `value[]`"
+  (e.g. `orgSlugs in ["acme", "acme-staging"]`)
+
+`equals`, `endsWith`, and `exists` are **rejected at parse time** when
+applied to `orgIds` or `orgSlugs` — use `in` with a single-element
+`value` array instead. Bad policies fail loudly on PATCH.
+
+### Semantics
+
+1. **Rules evaluate top-to-bottom.** `stopOnMatch` defaults to `true`;
+   first match wins. A rule with `stopOnMatch: false` appends its
+   `tabs[]` and evaluation continues.
+2. **Missing fields never throw.** An `equals` on `email` against an
+   anonymous viewer returns `false`.
+3. **Empty policies short-circuit.** `resolution_policy = {}` or
+   `{ version: 1, rules: [] }` skips viewer-context construction entirely
+   and serves the public URL list.
+4. **Rule names are private by default.** The matched rule's `name` is
+   only surfaced to the viewer when that rule has `showBadge: true`.
+   Keeps owner-side taxonomy (e.g. "VIP Customers") internal.
+5. **Size + depth limits are enforced at validate time.** Max 50 rules,
+   20 tabs per rule, condition depth 4. Prevents a pathological policy
+   from DoS-ing the resolver.
+
+### Authoring a policy
+
+The dashboard editor at `/dashboard/links/[slug]` has a Personalize
+panel with two modes:
+
+- **Structured** (default) — canned operator presets (`equals email`,
+  `endsWith emailDomain`, `in orgSlugs`, `anonymous`, `signedIn`) plus
+  a "Preview as" control that runs the same pure evaluator as
+  `/l/[slug]`.
+- **Advanced (JSON)** — raw policy with validation on Apply. Use this
+  for compound `and` / `or` / `not` conditions.
+
+PATCH directly via the API (or SDK, when it lands in Sprint 2.5) is also
+fine — the `parseResolutionPolicy` validator is the single source of
+truth and produces the same errors everywhere.
+
 ## Deployment
 
 ### Vercel + Neon
@@ -350,7 +495,8 @@ several of these are different by design.
 - **Linky does not execute user content.** We store URLs; we do not host
   HTML, JS, or files. No password walls on the bundle itself, no proxy
   routes, no service variables. Access control for *who sees which URLs*
-  will be handled via identity-aware resolution (Sprint 2), not via gates.
+  is handled via identity-aware resolution — see the Sprint 2 section
+  above — never via gates.
 - **Linky is a low-surveillance primitive by default.** Bundles launch
   clean — no tracker-hop redirects, no fingerprint cookies on anonymous
   viewers, no "did you read this?" pings on destination tabs. We also
@@ -370,11 +516,12 @@ several of these are different by design.
 ## Roadmap
 
 - [x] **Accounts + editable launch bundles + per-URL metadata** — Sprint 1.
+- [x] **Identity-aware URL resolution** — same Linky, different tabs per viewer. Sprint 2.
+- [ ] **CLI / SDK flags for policy editing** (`linky update <slug> --policy file.json`) — Sprint 2.5.
 - [ ] **Analytics + access control** — team plan foundation.
 - [ ] **First-class MCP server + "linky session" convention** — other frameworks can adopt; publish the spec.
 - [ ] **Cursor / Claude / ChatGPT-native skills** — emit a Linky at the end of every task.
 - [ ] **Browser extension** — tab-group capture and restore.
-- [ ] **Identity-aware URL resolution** — same Linky, different tabs per viewer. Sprint 2's magic demo.
 
 ## Development Commands
 

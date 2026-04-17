@@ -129,6 +129,27 @@ Route handlers catch these explicitly and translate to JSON responses. Unexpecte
 - **Never edit a migration file after it lands on `main`.** Write a follow-up migration. This preserves the property that anyone who applied the broken version first can still converge.
 - See `db/migrations/README.md` for the full authoring guide.
 
+### Migration rollout pattern (one per sprint chunk that touches schema)
+
+Every time you write a migration, the rollout order is **fixed**:
+
+1. **Author** `db/migrations/NNN_<short-name>.sql` and mirror the post-migration shape into `db/schema.sql` in the same commit.
+2. **Apply to your local dev DB** with `npm run db:migrate` *before* you write or run any application code that expects the new columns. The failure mode of "code deployed against un-migrated schema" is hours of wasted debugging that starts with a single runtime `column ... does not exist` error.
+3. **Apply to production via the Neon SQL console** (or the `user-Neon` MCP's `run_sql` / `run_sql_transaction` tools) against the production project/branch. Paste the full migration SQL — it's idempotent, so re-running is safe. Verify with `\d <affected_table>` before deploying the code that depends on it.
+4. **Ship the code.** By the time Vercel is building, both DBs already have the column.
+
+Never rely on "Vercel will run the migration for us" — we do not, by design, auto-run migrations on boot. The human or the Neon MCP is the migration runner.
+
+### Local env gotcha
+
+`.env.local` stores `DATABASE_URL` with query parameters that include `&` (Neon's `channel_binding=require&sslmode=require`). `source .env.local` will choke on the ampersand. To run `psql` directly against the local env, use:
+
+```bash
+export DATABASE_URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2-)
+```
+
+`npm run db:migrate` doesn't hit this because it reads `DATABASE_URL` from the already-exported shell env, not by parsing `.env.local` itself — so either export via the snippet above, or run migrations via the Neon SQL console / MCP and skip the shell entirely.
+
 ---
 
 ## Tests
@@ -167,6 +188,41 @@ collide with caller-supplied keys:
 When adding new server-injected metadata, put it under `_linky.*` and
 never trust a caller-provided `_linky` object.
 
+## Identity-aware resolution (Sprint 2)
+
+The DSL + evaluator live in `src/lib/linky/policy.ts`. The rules are:
+
+- **The parser is the only validator.** `parseResolutionPolicy(raw)` hand-rolls
+  shape checks, enforces operator × field compatibility (e.g. `equals` on
+  `orgSlugs` is rejected at parse time — use `in`), mints missing rule ids,
+  and routes every rule tab's URL through `normalizeUrlList` for parity with
+  `linkies.urls`. Throws `LinkyError({ code: "BAD_REQUEST" })` on any issue.
+- **`evaluatePolicy(policy, viewer, fallbackUrls)` is pure.** No DB, no env,
+  no clock, no throws. Missing viewer fields return `false` at leaf
+  operators. Exhaustively tested in `policy.test.ts` — add new edge cases
+  there, never inline.
+- **Policy edits snapshot into `linky_versions`.** `linky_versions.resolution_policy`
+  is written in the same transaction as URL/metadata snapshots in
+  `appendVersion`. Do not add a DSL-only edit path that skips history.
+- **Empty policies short-circuit.** `/l/[slug]` skips Clerk entirely when
+  `isEmptyPolicy(linky.resolutionPolicy)` is true. Keep that path fast.
+- **Viewer identity is strictly Clerk.** `src/lib/server/viewer-context.ts`
+  is the bridge. The pure `mapClerkToViewerContext(user, memberships)`
+  helper is tested with fake shapes in `viewer-context.test.ts` — that
+  test exists specifically to catch Clerk SDK provider-name drift
+  (`oauth_github` → something else) before it silently breaks
+  `githubLogin`/`googleEmail` population.
+- **`orgIds` / `orgSlugs` are plural.** They reflect the viewer's full Clerk
+  membership set, not the active workspace. Rules must target plural fields
+  via `in`.
+- **Rule names are private by default.** Only rules with `showBadge: true`
+  surface their name to the viewer. The owner-side taxonomy stays internal
+  otherwise (e.g. "VIP Customers" won't leak).
+- **Policies are only exposed to owners.** The `/l/[slug]` resolver never
+  ships the policy to the client — only the resolved tab set. The owner-only
+  PATCH route echoes the full policy in its DTO so the dashboard editor can
+  round-trip.
+
 ## Claim-flow contract
 
 Anonymous create responses return **all three** of:
@@ -192,6 +248,8 @@ Linky, and cannot be recovered via any other endpoint.
 - **Do not add a new public endpoint without listing it in `README.md` and updating `src/proxy.ts` matchers** if it needs auth.
 - **Do not treat `metadata._linky` as caller-writable.** Server-owned. Strip, don't merge.
 - **Do not add an endpoint that re-issues a claim token for an existing anonymous Linky.** Breaks the one-shot contract. If you need a recovery flow, design it against `creator_fingerprint` with explicit product review.
+- **Do not put side effects inside `evaluatePolicy`.** The evaluator is pure by contract — no DB, no Clerk, no clock. Tests rely on it. If you need a field the DSL doesn't expose, add it to `ViewerContext` + `viewer-context.ts` first, then reference it in a new leaf operator.
+- **Do not ship `linky.resolutionPolicy` to public clients.** Owner-only DTOs can echo it (the dashboard editor needs it); `/l/[slug]` only forwards the resolved tabs. Leaking the policy leaks the owner's audience taxonomy.
 
 ---
 
@@ -205,6 +263,7 @@ Linky, and cannot be recovered via any other endpoint.
 | Change user-visible copy | Dashboard: `src/app/dashboard/*`; Homepage: `src/app/page.tsx` + `src/components/site/live-linky-demo.tsx`; Sign-in/up: `src/app/sign{in,up}/[[...sign-*]]/page.tsx`; README |
 | Change how Clerk users land in our DB | `src/app/api/webhooks/clerk/route.ts` + `src/lib/server/identity-repository.ts` |
 | Work on the claim flow | `src/app/claim/[token]/page.tsx` + `src/lib/server/claim-tokens.ts` |
+| Extend the resolution policy DSL | `src/lib/linky/policy.ts` (types + parser + evaluator) + `src/lib/linky/policy.test.ts` (matrix) + `src/lib/server/viewer-context.ts` if the new field needs Clerk data |
 | Update the CLI | `cli/index.js` + `index.js` (SDK) + `index.d.ts` (types) |
 
 ---

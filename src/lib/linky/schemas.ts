@@ -1,4 +1,5 @@
 import { LinkyError } from "./errors";
+import { parseResolutionPolicy } from "./policy";
 import type {
   CreateLinkyPayload,
   LinkyMetadata,
@@ -350,15 +351,28 @@ export function parsePatchLinkyPayload(payload: unknown): PatchLinkyPayload {
     ) as string | null;
   }
 
+  if (payload.resolutionPolicy !== undefined) {
+    // `null` explicitly clears the policy; `{}` (or `{ rules: [] }`) is
+    // equivalent and collapses to the canonical empty form. Anything else
+    // must round-trip through `parseResolutionPolicy`, which handles depth,
+    // op/field compatibility, size limits, and rule-id minting.
+    if (payload.resolutionPolicy === null) {
+      result.resolutionPolicy = null;
+    } else {
+      result.resolutionPolicy = parseResolutionPolicy(payload.resolutionPolicy);
+    }
+  }
+
   const hasUpdate =
     result.urls !== undefined ||
     result.urlMetadata !== undefined ||
     result.title !== undefined ||
-    result.description !== undefined;
+    result.description !== undefined ||
+    result.resolutionPolicy !== undefined;
 
   if (!hasUpdate) {
     throw new LinkyError(
-      "Provide at least one of: urls, urlMetadata, title, description.",
+      "Provide at least one of: urls, urlMetadata, title, description, resolutionPolicy.",
       { code: "BAD_REQUEST", statusCode: 400 },
     );
   }

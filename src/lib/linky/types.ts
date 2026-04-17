@@ -64,6 +64,8 @@ export type LinkyOwner =
   | { type: "user"; userId: string }
   | { type: "org"; orgId: string };
 
+import type { ResolutionPolicy } from "./policy";
+
 export type LinkyRecord = {
   id: number;
   slug: string;
@@ -77,6 +79,10 @@ export type LinkyRecord = {
   deletedAt: string | null;
   source: LinkySource;
   metadata: LinkyMetadata | null;
+  // Sprint 2: identity-aware resolution policy (rules engine). Empty
+  // policies (`{ version: 1, rules: [] }`) are valid and mean "serve
+  // `urls` as-is to every viewer". See `src/lib/linky/policy.ts`.
+  resolutionPolicy: ResolutionPolicy;
 };
 
 // ---------------------------------------------------------------------------
@@ -92,6 +98,9 @@ export type PatchLinkyPayload = {
   urlMetadata?: UrlMetadata[];
   title?: string | null;
   description?: string | null;
+  // Sprint 2: null clears any existing policy; a parsed policy replaces it
+  // wholesale. Absence means "leave the current policy untouched".
+  resolutionPolicy?: ResolutionPolicy | null;
 };
 
 export type LinkyVersionRecord = {
@@ -100,6 +109,7 @@ export type LinkyVersionRecord = {
   urlMetadata: UrlMetadata[];
   title: string | null;
   description: string | null;
+  resolutionPolicy: ResolutionPolicy;
   editedByClerkUserId: string | null;
   editedAt: string;
 };

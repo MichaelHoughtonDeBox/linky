@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# cursor — local plan artifacts are workspace-scoped, not repo content
+.cursor/plans/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

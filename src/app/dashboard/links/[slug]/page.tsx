@@ -80,6 +80,7 @@ export default async function DashboardLinkyEditPage({ params }: PageProps) {
         initialDescription={linky.description}
         initialUrls={linky.urls}
         initialUrlMetadata={linky.urlMetadata}
+        initialResolutionPolicy={linky.resolutionPolicy}
         versions={versions}
       />
     </section>

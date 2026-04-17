@@ -2,6 +2,8 @@ import "server-only";
 
 import type { PoolClient } from "pg";
 
+import { parseResolutionPolicy } from "@/lib/linky/policy";
+import type { ResolutionPolicy } from "@/lib/linky/policy";
 import type {
   LinkyMetadata,
   LinkyOwner,
@@ -34,6 +36,7 @@ type DbLinkyRow = {
   description: string | null;
   url_metadata: unknown;
   creator_fingerprint: string | null;
+  resolution_policy: unknown;
 };
 
 type DbLinkyVersionRow = {
@@ -42,6 +45,7 @@ type DbLinkyVersionRow = {
   url_metadata: unknown;
   title: string | null;
   description: string | null;
+  resolution_policy: unknown;
   edited_by_clerk_user_id: string | null;
   edited_at: Date | string;
 };
@@ -64,6 +68,10 @@ export type InsertLinkyRecordInput = {
   // Hashed IP+UA captured at create time; used later for claim-flow
   // reattribution of anonymous linkies.
   creatorFingerprint?: string | null;
+  // Sprint 2: optional resolution policy. Defaults to the empty policy
+  // (`{ version: 1, rules: [] }`) at create time — owners attach policies
+  // via PATCH once they have the slug.
+  resolutionPolicy?: ResolutionPolicy | null;
 };
 
 export type ListLinkiesForSubjectInput =
@@ -144,6 +152,20 @@ function resolveOwner(row: DbLinkyRow): LinkyOwner {
   return { type: "anonymous" };
 }
 
+// Normalize a JSONB `resolution_policy` column into a canonical
+// `ResolutionPolicy`. Anything unparseable collapses to the empty policy so
+// a bad row can't break resolution. (Rows written through the API always
+// round-trip through `parseResolutionPolicy` before INSERT/UPDATE, so this
+// path only matters for legacy rows or raw DB edits.)
+function normalizeDbResolutionPolicy(raw: unknown): ResolutionPolicy {
+  if (raw === null || raw === undefined) return { version: 1, rules: [] };
+  try {
+    return parseResolutionPolicy(raw);
+  } catch {
+    return { version: 1, rules: [] };
+  }
+}
+
 function mapDbRow(row: DbLinkyRow): LinkyRecord {
   const urls = normalizeDbUrls(row.urls);
   const rawMetadata = normalizeDbUrlMetadata(row.url_metadata);
@@ -162,6 +184,7 @@ function mapDbRow(row: DbLinkyRow): LinkyRecord {
     deletedAt: toIsoOrNull(row.deleted_at),
     source: normalizeDbSource(row.source),
     metadata: normalizeDbMetadata(row.metadata),
+    resolutionPolicy: normalizeDbResolutionPolicy(row.resolution_policy),
   };
 }
 
@@ -174,6 +197,7 @@ function mapDbVersionRow(row: DbLinkyVersionRow): LinkyVersionRecord {
     urlMetadata: ensureMetadataAlignment(urls, metadata),
     title: row.title,
     description: row.description,
+    resolutionPolicy: normalizeDbResolutionPolicy(row.resolution_policy),
     editedByClerkUserId: row.edited_by_clerk_user_id,
     editedAt: toIso(row.edited_at),
   };
@@ -183,7 +207,8 @@ const FULL_COLUMNS = `
   id, slug, urls, created_at, updated_at, deleted_at,
   custom_alias, source, metadata,
   owner_user_id, owner_org_id,
-  title, description, url_metadata, creator_fingerprint
+  title, description, url_metadata, creator_fingerprint,
+  resolution_policy
 `;
 
 // ---------------------------------------------------------------------------
@@ -197,17 +222,21 @@ export async function insertLinkyRecord(
 
   const urlMetadata = ensureMetadataAlignment(input.urls, input.urlMetadata);
 
+  const resolutionPolicy = input.resolutionPolicy ?? { version: 1, rules: [] };
+
   const result = await pool.query<DbLinkyRow>(
     `
     INSERT INTO linkies (
       slug, urls, custom_alias, source, metadata,
       owner_user_id, owner_org_id,
-      title, description, url_metadata, creator_fingerprint
+      title, description, url_metadata, creator_fingerprint,
+      resolution_policy
     )
     VALUES (
       $1, $2::jsonb, $3, $4, $5::jsonb,
       $6, $7,
-      $8, $9, $10::jsonb, $11
+      $8, $9, $10::jsonb, $11,
+      $12::jsonb
     )
     ON CONFLICT (slug) DO NOTHING
     RETURNING ${FULL_COLUMNS}
@@ -224,6 +253,7 @@ export async function insertLinkyRecord(
       input.description ?? null,
       JSON.stringify(urlMetadata),
       input.creatorFingerprint ?? null,
+      JSON.stringify(resolutionPolicy),
     ],
   );
 
@@ -343,6 +373,7 @@ export async function patchLinkyRecord(
         url_metadata = $3::jsonb,
         title = $4,
         description = $5,
+        resolution_policy = $6::jsonb,
         updated_at = NOW()
       WHERE slug = $1
       RETURNING ${FULL_COLUMNS}
@@ -353,6 +384,7 @@ export async function patchLinkyRecord(
         JSON.stringify(merged.urlMetadata),
         merged.title,
         merged.description,
+        JSON.stringify(merged.resolutionPolicy),
       ],
     );
 
@@ -374,6 +406,7 @@ function mergePatch(
   urlMetadata: UrlMetadata[];
   title: string | null;
   description: string | null;
+  resolutionPolicy: ResolutionPolicy;
 } {
   const currentUrls = normalizeDbUrls(currentRow.urls);
   const currentMetadata = ensureMetadataAlignment(
@@ -391,7 +424,20 @@ function mergePatch(
   const description =
     patch.description !== undefined ? patch.description : currentRow.description;
 
-  return { urls, urlMetadata, title, description };
+  // Sprint 2: policy merge rules.
+  //   - patch.resolutionPolicy === undefined → keep current policy.
+  //   - patch.resolutionPolicy === null      → explicit clear to empty policy.
+  //   - otherwise                            → the already-parsed policy wins.
+  let resolutionPolicy: ResolutionPolicy;
+  if (patch.resolutionPolicy === undefined) {
+    resolutionPolicy = normalizeDbResolutionPolicy(currentRow.resolution_policy);
+  } else if (patch.resolutionPolicy === null) {
+    resolutionPolicy = { version: 1, rules: [] };
+  } else {
+    resolutionPolicy = patch.resolutionPolicy;
+  }
+
+  return { urls, urlMetadata, title, description, resolutionPolicy };
 }
 
 async function appendVersion(
@@ -413,9 +459,10 @@ async function appendVersion(
   await client.query(
     `
     INSERT INTO linky_versions (
-      linky_id, version_number, urls, url_metadata, title, description, edited_by_clerk_user_id
+      linky_id, version_number, urls, url_metadata, title, description,
+      resolution_policy, edited_by_clerk_user_id
     )
-    VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7)
+    VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7::jsonb, $8)
     `,
     [
       row.id,
@@ -424,6 +471,7 @@ async function appendVersion(
       JSON.stringify(normalizeDbUrlMetadata(row.url_metadata)),
       row.title,
       row.description,
+      JSON.stringify(normalizeDbResolutionPolicy(row.resolution_policy)),
       editedByClerkUserId,
     ],
   );
@@ -462,6 +510,7 @@ export async function listLinkyVersions(
   const result = await pool.query<DbLinkyVersionRow>(
     `
     SELECT v.version_number, v.urls, v.url_metadata, v.title, v.description,
+           v.resolution_policy,
            v.edited_by_clerk_user_id, v.edited_at
     FROM linky_versions v
     INNER JOIN linkies l ON l.id = v.linky_id

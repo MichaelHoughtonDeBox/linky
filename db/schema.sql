@@ -115,6 +115,10 @@ CREATE TABLE IF NOT EXISTS linky_versions (
   url_metadata            JSONB   NOT NULL,
   title                   TEXT,
   description             TEXT,
+  -- Snapshot of `linkies.resolution_policy` at the moment this version was
+  -- captured. Added in migration 003; defaults to `{}` so pre-Sprint-2 rows
+  -- remain valid when replayed.
+  resolution_policy       JSONB   NOT NULL DEFAULT '{}'::jsonb,
   edited_by_clerk_user_id TEXT,
   edited_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (linky_id, version_number)

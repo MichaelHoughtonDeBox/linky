@@ -15,6 +15,14 @@ type LinkyLauncherProps = {
   urls: string[];
   createdAt: string;
   baseUrl: string;
+  // Sprint 2 — identity-aware resolution props. Defaults preserve the
+  // pre-Sprint-2 render for Linkies without a policy attached (the server
+  // component sets `policyActive: false` for those).
+  policyActive?: boolean;
+  viewerIsAnonymous?: boolean;
+  viewerLabel?: string | null;
+  matchedRuleId?: string | null;
+  matchedRuleName?: string | null;
 };
 
 const OPEN_LINK_KEY = "Open All";
@@ -45,6 +53,11 @@ export function LinkyLauncher({
   urls,
   createdAt,
   baseUrl,
+  policyActive = false,
+  viewerIsAnonymous = true,
+  viewerLabel = null,
+  matchedRuleId = null,
+  matchedRuleName = null,
 }: LinkyLauncherProps) {
   const [openSummary, setOpenSummary] = useState<OpenSummary | null>(null);
 
@@ -86,8 +99,62 @@ export function LinkyLauncher({
             <span className="terminal-chip">{urls.length} links</span>
             <span className="terminal-chip">slug: {slug}</span>
             <span className="terminal-chip">created: {createdDateLabel} UTC</span>
+            {policyActive ? (
+              <span className="terminal-chip">personalized</span>
+            ) : null}
           </div>
         </header>
+
+        {matchedRuleId ? (
+          <section className="site-inline-callout mb-5">
+            <p className="terminal-label mb-1">Personalized</p>
+            <p className="terminal-muted text-xs leading-relaxed sm:text-sm">
+              {viewerLabel ? (
+                <>
+                  Tuned for <code className="text-foreground">{viewerLabel}</code>
+                </>
+              ) : (
+                <>Tuned for your signed-in identity</>
+              )}
+              {matchedRuleName ? (
+                <>
+                  {" "}
+                  — matched rule:{" "}
+                  <span className="text-foreground">{matchedRuleName}</span>
+                </>
+              ) : null}
+              .
+            </p>
+          </section>
+        ) : null}
+
+        {policyActive && viewerIsAnonymous ? (
+          <section
+            className="site-inline-callout mb-5 border-l-2"
+            style={{ borderLeftColor: "var(--foreground)" }}
+          >
+            <p className="terminal-label mb-1">This Linky is personalized</p>
+            <p className="text-xs leading-relaxed text-foreground sm:text-sm">
+              The owner set rules for who sees what. Without signing in you
+              will only see the public bundle below — your tailored tabs stay
+              hidden until Linky knows who you are.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={`/signin?redirect_url=${encodeURIComponent(`/l/${slug}`)}`}
+                className="terminal-action inline-block px-4 py-2 text-xs sm:text-sm"
+              >
+                Sign in to see your tabs
+              </Link>
+              <Link
+                href={`/signup?redirect_url=${encodeURIComponent(`/l/${slug}`)}`}
+                className="terminal-secondary inline-block px-4 py-2 text-xs sm:text-sm"
+              >
+                Create a free account
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         <section className="terminal-card mb-5 p-4">
           <button

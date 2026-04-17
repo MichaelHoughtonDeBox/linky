@@ -66,6 +66,12 @@ function toRecordDto(record: LinkyRecord) {
     updatedAt: record.updatedAt,
     source: record.source,
     metadata: record.metadata,
+    // Sprint 2: the DTO includes the full policy so the dashboard editor
+    // can round-trip without a second read. Safe because PATCH is owner-only
+    // (ownership is enforced by `requireCanEditLinky` above). The public
+    // `/l/[slug]` launcher never ships the policy to the client — it only
+    // forwards the resolved tab set.
+    resolutionPolicy: record.resolutionPolicy,
   };
 }
 
