@@ -247,6 +247,19 @@ export function parseCreateLinkyPayload(payload: unknown): CreateLinkyPayload {
   const urlMetadata = normalizeUrlMetadataArray(payload.urlMetadata, urls.length);
   const email = normalizeEmail(payload.email);
 
+  // Sprint 2.5: optional resolution policy at create time. Undefined / null /
+  // {} collapse to the canonical empty policy and are omitted from the
+  // returned payload — the repository defaults to an empty policy anyway.
+  // Anything else must round-trip through parseResolutionPolicy (same
+  // validator used by PATCH).
+  let resolutionPolicy: ReturnType<typeof parseResolutionPolicy> | undefined;
+  if (payload.resolutionPolicy !== undefined && payload.resolutionPolicy !== null) {
+    const parsed = parseResolutionPolicy(payload.resolutionPolicy);
+    if (parsed.rules.length > 0) {
+      resolutionPolicy = parsed;
+    }
+  }
+
   return {
     urls,
     source: normalizeSource(payload.source),
@@ -255,6 +268,7 @@ export function parseCreateLinkyPayload(payload: unknown): CreateLinkyPayload {
     description: description ?? undefined,
     urlMetadata,
     email,
+    resolutionPolicy,
   };
 }
 

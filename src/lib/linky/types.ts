@@ -37,6 +37,14 @@ export type CreateLinkyPayload = {
   // email it directly). Presence alone does NOT authenticate the request;
   // the Linky stays anonymous until the token is consumed via sign-in.
   email?: string;
+  // Sprint 2.5: optional resolution policy attached at create time. When
+  // present, the new Linky is born personalized — `/l/[slug]` will evaluate
+  // this policy against every viewer instead of serving `urls` as a static
+  // list. Absent / `undefined` keeps the empty-policy default (public for
+  // everyone). Note: anonymous creates with a policy still work; the policy
+  // will stay locked until the Linky is claimed, because anonymous Linkies
+  // are immutable — plan accordingly.
+  resolutionPolicy?: ResolutionPolicy;
 };
 
 export type CreateLinkyResponse = {
@@ -57,6 +65,10 @@ export type CreateLinkyResponse = {
   // Human-readable warning string that agents/CLIs can surface verbatim.
   // Present only when `claimToken` is present.
   warning?: string;
+  // Sprint 2.5: present when the caller attached a resolution policy at
+  // create time. Echoed back so agents/CLIs can confirm the parsed form
+  // (server-minted rule ids in particular) without a second fetch.
+  resolutionPolicy?: ResolutionPolicy;
 };
 
 export type LinkyOwner =

@@ -105,6 +105,70 @@ describe("parseCreateLinkyPayload", () => {
       }),
     ).toThrow(/aliases/);
   });
+
+  // -------------------------------------------------------------------------
+  // Sprint 2.5 — resolutionPolicy at create time
+  // -------------------------------------------------------------------------
+
+  it("accepts a valid resolutionPolicy at create time", () => {
+    const result = parseCreateLinkyPayload({
+      urls: ["https://a.com"],
+      resolutionPolicy: {
+        version: 1,
+        rules: [
+          {
+            name: "Engineering",
+            when: { op: "endsWith", field: "emailDomain", value: "acme.com" },
+            tabs: [{ url: "https://acme.internal" }],
+          },
+        ],
+      },
+    });
+    expect(result.resolutionPolicy?.rules).toHaveLength(1);
+    expect(result.resolutionPolicy?.rules[0].when).toMatchObject({
+      op: "endsWith",
+      field: "emailDomain",
+      value: "acme.com",
+    });
+    // Rule id was minted server-side (ULID-style).
+    expect(result.resolutionPolicy?.rules[0].id).toMatch(
+      /^r_[0-9A-HJKMNP-TV-Z]{20}$/,
+    );
+  });
+
+  it("collapses an empty resolutionPolicy ({}) to undefined", () => {
+    const result = parseCreateLinkyPayload({
+      urls: ["https://a.com"],
+      resolutionPolicy: {},
+    });
+    expect(result.resolutionPolicy).toBeUndefined();
+  });
+
+  it("collapses a null resolutionPolicy to undefined", () => {
+    const result = parseCreateLinkyPayload({
+      urls: ["https://a.com"],
+      resolutionPolicy: null,
+    });
+    expect(result.resolutionPolicy).toBeUndefined();
+  });
+
+  it("propagates parser errors from a malformed resolutionPolicy", () => {
+    expect(() =>
+      parseCreateLinkyPayload({
+        urls: ["https://a.com"],
+        resolutionPolicy: {
+          version: 1,
+          rules: [
+            {
+              // equals against a set-valued field — rejected at parse time.
+              when: { op: "equals", field: "orgSlugs", value: "acme" },
+              tabs: [{ url: "https://acme.internal" }],
+            },
+          ],
+        },
+      }),
+    ).toThrow(/set-valued field/);
+  });
 });
 
 // ---------------------------------------------------------------------------

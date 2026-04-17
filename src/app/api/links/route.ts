@@ -69,6 +69,12 @@ function buildCreateResponse(
     response.warning = CLAIM_WARNING_MESSAGE;
   }
 
+  // Sprint 2.5: echo the persisted policy when one is attached. Saves
+  // agents a second fetch to confirm server-minted rule ids.
+  if (record.resolutionPolicy && record.resolutionPolicy.rules.length > 0) {
+    response.resolutionPolicy = record.resolutionPolicy;
+  }
+
   return response;
 }
 
@@ -164,6 +170,7 @@ async function createLinkyRecord(
       ownerUserId: attribution.ownerUserId,
       ownerOrgId: attribution.ownerOrgId,
       creatorFingerprint: attribution.creatorFingerprint,
+      resolutionPolicy: payload.resolutionPolicy ?? null,
     });
 
     if (created) {
