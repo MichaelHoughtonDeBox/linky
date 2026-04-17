@@ -37,6 +37,11 @@ Options:
                          and take ownership in one click.
   --title <string>       Optional title stored with the Linky
   --description <string> Optional description stored with the Linky
+  --policy <file>        Optional JSON file containing a resolutionPolicy.
+                         When present, the new Linky is born personalized —
+                         /l/<slug> evaluates this policy against every viewer.
+                         Use "-" to read policy JSON from stdin. Server-side
+                         validation errors surface verbatim.
   --client <id>          Optional client attribution sent as the
                          \`Linky-Client\` header for ops debugging. Convention:
                          <tool>/<version> (e.g. "cursor/skill-v1"). Malformed
@@ -50,6 +55,7 @@ Examples:
   echo "https://example.com" | linky create --stdin --json
   linky create https://example.com --email alice@example.com
   linky create https://example.com --client cursor/skill-v1
+  linky create https://docs.acme.com --policy ./acme-team.policy.json
 `);
 }
 
@@ -75,6 +81,11 @@ function parseArgs(argv) {
     title: undefined,
     description: undefined,
     client: undefined,
+    // Path to a JSON file containing a resolutionPolicy. Read + parsed in
+    // main() AFTER stdin URLs are consumed (so `--policy -` can coexist
+    // with `--stdin` reading from a separate source — but in practice one
+    // stdin consumer wins; we reject the conflicting combination below).
+    policyPath: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -150,6 +161,18 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (token === "--policy") {
+      const policyArg = args[index + 1];
+      // "-" is a valid value (stdin). Any other leading dash is an option
+      // slipped where a path was expected — surface it clearly.
+      if (!policyArg || (policyArg.startsWith("-") && policyArg !== "-")) {
+        throw new Error("--policy requires a file path (or - for stdin).");
+      }
+      options.policyPath = policyArg;
+      index += 1;
+      continue;
+    }
+
     if (token.startsWith("-")) {
       throw new Error(`Unknown option: ${token}`);
     }
@@ -178,10 +201,75 @@ async function readUrlsFromStdin() {
     .filter((line) => line.length > 0);
 }
 
+async function readStdinText() {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// Read + parse a resolutionPolicy from disk or stdin. Throws with a
+// crisp, caller-facing message on any error — the caller handles exit.
+async function loadResolutionPolicy(policyPath, stdinAlreadyConsumed) {
+  const raw =
+    policyPath === "-"
+      ? await (async () => {
+          if (stdinAlreadyConsumed) {
+            throw new Error(
+              "--policy - conflicts with --stdin: stdin is already being consumed for URLs.",
+            );
+          }
+          return readStdinText();
+        })()
+      : await readPolicyFile(policyPath);
+
+  if (!raw.trim()) {
+    throw new Error(`--policy file ${policyPath} is empty.`);
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `--policy file ${policyPath} is not valid JSON: ${message}`,
+    );
+  }
+}
+
+async function readPolicyFile(policyPath) {
+  // Lazy ESM imports keep this file lint-clean under the repo's ESLint
+  // config (which forbids CommonJS require()) while staying pure CJS at
+  // the file level. The SDK import in main() uses the same pattern.
+  const { promises: fsPromises } = await import("node:fs");
+  const pathModule = await import("node:path");
+  const resolved = pathModule.resolve(process.cwd(), policyPath);
+  try {
+    return await fsPromises.readFile(resolved, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      throw new Error(`--policy file not found: ${policyPath}`);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not read --policy file ${policyPath}: ${message}`);
+  }
+}
+
 function printCreateSummary(result) {
   // Primary line is always the Linky URL itself — this is the single
   // machine-consumable value most upstream automation wants.
   console.log(colorize(result.url, ANSI.bold));
+
+  if (result.resolutionPolicy && result.resolutionPolicy.rules && result.resolutionPolicy.rules.length > 0) {
+    const count = result.resolutionPolicy.rules.length;
+    console.log(
+      colorize(
+        `Personalized: ${count} rule${count === 1 ? "" : "s"} attached. Signed-in viewers see tailored tabs.`,
+        ANSI.cyan,
+      ),
+    );
+  }
 
   if (result.claimUrl) {
     console.log("");
@@ -234,6 +322,27 @@ async function main() {
     process.exit(1);
   }
 
+  // Read + JSON-parse the policy BEFORE the API call so we fail early with
+  // a caller-friendly message (before rate limits / network costs). The
+  // server re-validates via parseResolutionPolicy on the other side.
+  let resolutionPolicy;
+  if (parsed.policyPath !== undefined) {
+    try {
+      resolutionPolicy = await loadResolutionPolicy(
+        parsed.policyPath,
+        parsed.readFromStdin,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (parsed.json) {
+        console.error(JSON.stringify({ error: message }));
+      } else {
+        console.error(colorize(`Linky CLI error: ${message}`, ANSI.yellow));
+      }
+      process.exit(1);
+    }
+  }
+
   try {
     // Lazy import keeps startup fast and allows this script to stay CommonJS.
     const sdkModule = await import("../index.js");
@@ -248,6 +357,7 @@ async function main() {
       title: parsed.title,
       description: parsed.description,
       client: parsed.client,
+      resolutionPolicy,
     });
 
     if (parsed.json) {

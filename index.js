@@ -30,6 +30,10 @@ async function createLinky({
   // Malformed values are silently dropped server-side — they never break
   // the create call.
   client,
+  // Sprint 2.5: optional resolution policy attached at create time. The
+  // server re-validates via parseResolutionPolicy — malformed policies
+  // reject with a 400. Pass-through; no client-side shape coercion.
+  resolutionPolicy,
   fetchImpl = fetch,
 }) {
   assertUrlArray(urls);
@@ -55,6 +59,7 @@ async function createLinky({
       title,
       description,
       urlMetadata,
+      resolutionPolicy,
     }),
   });
 
@@ -87,6 +92,12 @@ async function createLinky({
     claimExpiresAt:
       typeof data.claimExpiresAt === "string" ? data.claimExpiresAt : undefined,
     warning: typeof data.warning === "string" ? data.warning : undefined,
+    // Server echoes the parsed policy (with minted rule ids) iff one was
+    // attached. Caller can persist it to reason about rule ids later.
+    resolutionPolicy:
+      data.resolutionPolicy && typeof data.resolutionPolicy === "object"
+        ? data.resolutionPolicy
+        : undefined,
   };
 }
 

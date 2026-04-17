@@ -4,6 +4,55 @@ export type UrlMetadata = {
   openPolicy?: "always" | "desktop" | "mobile";
 };
 
+// ---------------------------------------------------------------------------
+// Resolution policy DSL (Sprint 2). Kept structural here so the SDK has
+// zero runtime dependencies on the repo's internal types module. The
+// authoritative shape lives in `src/lib/linky/policy.ts`; any server-side
+// change that widens the DSL should widen these mirrors in the same PR.
+// ---------------------------------------------------------------------------
+
+export type PolicyViewerField =
+  | "email"
+  | "emailDomain"
+  | "userId"
+  | "githubLogin"
+  | "googleEmail"
+  | "orgIds"
+  | "orgSlugs";
+
+export type PolicyCondition =
+  | { op: "always" }
+  | { op: "anonymous" }
+  | { op: "signedIn" }
+  | { op: "equals"; field: PolicyViewerField; value: string }
+  | { op: "in"; field: PolicyViewerField; value: string[] }
+  | { op: "endsWith"; field: PolicyViewerField; value: string }
+  | { op: "exists"; field: PolicyViewerField }
+  | { op: "and"; of: PolicyCondition[] }
+  | { op: "or"; of: PolicyCondition[] }
+  | { op: "not"; of: [PolicyCondition] };
+
+export type PolicyTab = {
+  url: string;
+  note?: string;
+};
+
+export type PolicyRule = {
+  // Optional on the wire — the server mints a ULID-style id when absent.
+  id?: string;
+  name?: string;
+  when: PolicyCondition;
+  tabs: PolicyTab[];
+  // Both default server-side when omitted (stopOnMatch: true, showBadge: false).
+  stopOnMatch?: boolean;
+  showBadge?: boolean;
+};
+
+export type ResolutionPolicy = {
+  version: 1;
+  rules: PolicyRule[];
+};
+
 export type CreateLinkyOptions = {
   urls: string[];
   baseUrl?: string;
@@ -20,6 +69,12 @@ export type CreateLinkyOptions = {
   // `<tool>/<version>` (e.g. "cursor/skill-v1"). Malformed values are
   // silently dropped server-side and do NOT break the create call.
   client?: string;
+  // Sprint 2.5: attach an identity-aware resolution policy at create time.
+  // When present, the new Linky is born personalized — `/l/<slug>` will
+  // evaluate this policy against every viewer. Caveat: anonymous Linkies
+  // are immutable, so an agent-created anonymous Linky with a policy stays
+  // locked to that policy until it's claimed.
+  resolutionPolicy?: ResolutionPolicy;
   fetchImpl?: typeof fetch;
 };
 
@@ -38,6 +93,10 @@ export type CreateLinkyResult = {
   claimToken?: string;
   claimExpiresAt?: string;
   warning?: string;
+  // Sprint 2.5: present when a policy was attached at create time. The
+  // server echoes the parsed form (with minted rule ids) so the caller
+  // doesn't need a second fetch to know the canonical rule shape.
+  resolutionPolicy?: ResolutionPolicy;
 };
 
 export const DEFAULT_BASE_URL: string;
