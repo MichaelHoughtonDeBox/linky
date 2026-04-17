@@ -3,11 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
+import type { ResolutionPolicy } from "@/lib/linky/policy";
 import type {
   LinkyVersionRecord,
   OpenPolicy,
   UrlMetadata,
 } from "@/lib/linky/types";
+
+import { PersonalizePanel } from "./personalize-panel";
 
 type Props = {
   slug: string;
@@ -15,8 +18,19 @@ type Props = {
   initialDescription: string | null;
   initialUrls: string[];
   initialUrlMetadata: UrlMetadata[];
+  initialResolutionPolicy: ResolutionPolicy;
   versions: LinkyVersionRecord[];
 };
+
+// Sentinel — matches `PatchLinkyPayload.resolutionPolicy`: `null` means
+// "clear the policy", `undefined` means "leave it untouched", otherwise a
+// parsed `ResolutionPolicy`. We model the local state with an explicit
+// "dirty" flag so we only include the key in PATCH when the user
+// deliberately edited it.
+type PolicyDraft =
+  | { kind: "untouched" }
+  | { kind: "cleared" }
+  | { kind: "edited"; policy: ResolutionPolicy };
 
 const OPEN_POLICIES: { value: OpenPolicy; label: string }[] = [
   { value: "always", label: "Always open" },
@@ -54,6 +68,7 @@ export function LinkyEditor({
   initialDescription,
   initialUrls,
   initialUrlMetadata,
+  initialResolutionPolicy,
   versions,
 }: Props) {
   const router = useRouter();
@@ -65,6 +80,9 @@ export function LinkyEditor({
       ? initialUrlMetadata
       : initialUrls.map((_, i) => metaAt(i, initialUrlMetadata)),
   );
+  const [policyDraft, setPolicyDraft] = useState<PolicyDraft>({
+    kind: "untouched",
+  });
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -90,12 +108,14 @@ export function LinkyEditor({
     ) {
       return true;
     }
+    if (policyDraft.kind !== "untouched") return true;
     return false;
   }, [
     title,
     description,
     urls,
     urlMetadata,
+    policyDraft,
     initialTitle,
     initialDescription,
     initialUrls,
@@ -144,27 +164,36 @@ export function LinkyEditor({
 
     startTransition(async () => {
       try {
+        const patchBody: Record<string, unknown> = {
+          title: title.trim() || null,
+          description: description.trim() || null,
+          urls: cleanedUrls,
+          urlMetadata,
+        };
+
+        if (policyDraft.kind === "cleared") {
+          patchBody.resolutionPolicy = null;
+        } else if (policyDraft.kind === "edited") {
+          patchBody.resolutionPolicy = policyDraft.policy;
+        }
+
         const response = await fetch(`/api/links/${slug}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            title: title.trim() || null,
-            description: description.trim() || null,
-            urls: cleanedUrls,
-            urlMetadata,
-          }),
+          body: JSON.stringify(patchBody),
         });
 
-        const body = (await response.json().catch(() => ({}))) as {
+        const responseBody = (await response.json().catch(() => ({}))) as {
           error?: string;
         };
 
         if (!response.ok) {
-          setError(body.error ?? `Save failed (${response.status}).`);
+          setError(responseBody.error ?? `Save failed (${response.status}).`);
           return;
         }
 
         setSuccessMessage("Saved. New version appended to history.");
+        setPolicyDraft({ kind: "untouched" });
         // Re-fetch the server-rendered view so initial* props are fresh on
         // next navigation and isDirty resets against the new baseline.
         router.refresh();
@@ -377,6 +406,19 @@ export function LinkyEditor({
           UI will start rendering notes + honoring the open policy in Sprint 2.
         </p>
       </section>
+
+      <PersonalizePanel
+        initialPolicy={initialResolutionPolicy}
+        fallbackUrls={cleanedUrls}
+        disabled={isPending}
+        onChange={(policy) => {
+          if (policy === null) {
+            setPolicyDraft({ kind: "cleared" });
+          } else {
+            setPolicyDraft({ kind: "edited", policy });
+          }
+        }}
+      />
 
       {/* Save / delete / feedback */}
       <section className="flex flex-wrap items-center gap-3">
