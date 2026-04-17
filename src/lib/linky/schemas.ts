@@ -28,6 +28,7 @@ const ALLOWED_OPEN_POLICIES = new Set<OpenPolicy>([
 const MAX_TITLE_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 500;
 const MAX_NOTE_LENGTH = 500;
+const MAX_CLIENT_ATTRIBUTION_LENGTH = 120;
 const MAX_TAGS_PER_URL = 10;
 const MAX_TAG_LENGTH = 40;
 
@@ -363,4 +364,38 @@ export function parsePatchLinkyPayload(payload: unknown): PatchLinkyPayload {
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Client attribution header (`Linky-Client: <agent>/<tool-version>`).
+//
+// Optional string that agents/SDKs can send so we can attribute API calls
+// to a specific integration. Useful for ops debugging ("our Cursor skill
+// is generating 4xx spikes") without leaking real identity. We are
+// intentionally permissive: malformed headers are silently dropped rather
+// than rejecting the whole request, since a bad client header should never
+// break agent workflows.
+//
+// Valid characters cover the shapes seen in the wild:
+//   - cursor/skill-v1
+//   - claude-desktop
+//   - my-ci-bot.deploys
+//   - chatgpt/plugin-linky
+// ---------------------------------------------------------------------------
+
+// ASCII letters, digits, and common separator punctuation. No spaces, no
+// quotes, no whitespace — keeps the field log-safe and URL-safe.
+const CLIENT_ATTRIBUTION_PATTERN = /^[A-Za-z0-9._\-/@+:]+$/;
+
+export function parseClientAttributionHeader(
+  raw: string | null | undefined,
+): string | undefined {
+  if (typeof raw !== "string") return undefined;
+
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > MAX_CLIENT_ATTRIBUTION_LENGTH) return undefined;
+  if (!CLIENT_ATTRIBUTION_PATTERN.test(trimmed)) return undefined;
+
+  return trimmed;
 }

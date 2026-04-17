@@ -37,13 +37,19 @@ Options:
                          and take ownership in one click.
   --title <string>       Optional title stored with the Linky
   --description <string> Optional description stored with the Linky
-  --json                 Print machine-readable JSON output
+  --client <id>          Optional client attribution sent as the
+                         \`Linky-Client\` header for ops debugging. Convention:
+                         <tool>/<version> (e.g. "cursor/skill-v1"). Malformed
+                         values are silently dropped and never fail the call.
+  --json                 Print machine-readable JSON output (includes
+                         claimToken and warning when anonymous)
   -h, --help             Show this help message
 
 Examples:
   linky create https://github.com/org/repo/pull/1 https://github.com/org/repo/pull/2
   echo "https://example.com" | linky create --stdin --json
   linky create https://example.com --email alice@example.com
+  linky create https://example.com --client cursor/skill-v1
 `);
 }
 
@@ -68,6 +74,7 @@ function parseArgs(argv) {
     email: undefined,
     title: undefined,
     description: undefined,
+    client: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -132,6 +139,17 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (token === "--client") {
+      const client = args[index + 1];
+      if (!client || client.startsWith("-")) {
+        throw new Error("--client requires a value.");
+      }
+
+      options.client = client;
+      index += 1;
+      continue;
+    }
+
     if (token.startsWith("-")) {
       throw new Error(`Unknown option: ${token}`);
     }
@@ -179,6 +197,17 @@ function printCreateSummary(result) {
         colorize(`  (expires in ${days} day${days === 1 ? "" : "s"})`, ANSI.dim),
       );
     }
+    // Raw token for agents that want to store the secret separately from
+    // the URL. Dimmed on TTY so it reads as secondary info; JSON mode still
+    // exposes it via the full result object.
+    if (result.claimToken) {
+      console.log(
+        colorize(
+          `  token: ${result.claimToken} (save this — cannot be recovered)`,
+          ANSI.dim,
+        ),
+      );
+    }
   }
 }
 
@@ -218,6 +247,7 @@ async function main() {
       email: parsed.email,
       title: parsed.title,
       description: parsed.description,
+      client: parsed.client,
     });
 
     if (parsed.json) {

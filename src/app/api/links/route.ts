@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
 
 import { LinkyError, isLinkyError } from "@/lib/linky/errors";
-import { parseCreateLinkyPayload } from "@/lib/linky/schemas";
+import {
+  parseClientAttributionHeader,
+  parseCreateLinkyPayload,
+} from "@/lib/linky/schemas";
 import { generateSlug } from "@/lib/linky/slugs";
 import type {
   CreateLinkyPayload,
   CreateLinkyResponse,
+  LinkyMetadata,
   LinkyRecord,
 } from "@/lib/linky/types";
 import { getAuthSubject, type AuthSubject } from "@/lib/server/auth";
@@ -38,6 +42,9 @@ function toErrorResponse(error: LinkyError): Response {
   );
 }
 
+const CLAIM_WARNING_MESSAGE =
+  "Save claimToken and claimUrl now — they are returned only once and cannot be recovered. If you lose them, the anonymous Linky stays public but can never be bound to an account.";
+
 function buildCreateResponse(
   record: LinkyRecord,
   request: NextRequest,
@@ -52,8 +59,14 @@ function buildCreateResponse(
   };
 
   if (claim) {
+    // We return BOTH the raw token and the pre-assembled URL so agents that
+    // want to store the secret in a key-manager (and reassemble the URL
+    // against a different base later, e.g. prod vs local) can do so cleanly.
+    // The URL is a convenience; the token is the secret.
     response.claimUrl = new URL(`/claim/${claim.token}`, baseUrl).toString();
     response.claimExpiresAt = claim.expiresAt;
+    response.claimToken = claim.token;
+    response.warning = CLAIM_WARNING_MESSAGE;
   }
 
   return response;
@@ -101,17 +114,51 @@ function resolveAttribution(
   };
 }
 
+// Merge server-injected metadata (e.g. the `Linky-Client` header) into the
+// user-supplied metadata without clobbering user keys. Our fields live under
+// the reserved `_linky` namespace; anything outside that namespace is the
+// caller's to own. If a caller tries to supply `_linky` themselves, we
+// discard their version — clients should NOT be able to forge attribution.
+function mergeServerMetadata(
+  caller: LinkyMetadata | undefined,
+  clientAttribution: string | undefined,
+): LinkyMetadata | undefined {
+  const hasServerFields = clientAttribution !== undefined;
+  if (!hasServerFields && !caller) return undefined;
+
+  const linkyNamespace: Record<string, unknown> = {};
+  if (clientAttribution) linkyNamespace.client = clientAttribution;
+
+  const callerCopy: LinkyMetadata = {};
+  if (caller) {
+    for (const [key, value] of Object.entries(caller)) {
+      // Drop any caller attempt to write into the reserved namespace.
+      if (key === "_linky") continue;
+      callerCopy[key] = value;
+    }
+  }
+
+  if (Object.keys(linkyNamespace).length > 0) {
+    callerCopy._linky = linkyNamespace;
+  }
+
+  return Object.keys(callerCopy).length > 0 ? callerCopy : undefined;
+}
+
 async function createLinkyRecord(
   payload: CreateLinkyPayload,
   attribution: AttributionFields,
+  clientAttribution: string | undefined,
 ): Promise<LinkyRecord> {
+  const mergedMetadata = mergeServerMetadata(payload.metadata, clientAttribution);
+
   for (let attempt = 0; attempt < GENERATED_SLUG_ATTEMPTS; attempt += 1) {
     const created = await insertLinkyRecord({
       slug: generateSlug(),
       urls: payload.urls,
       urlMetadata: payload.urlMetadata ?? [],
       source: payload.source,
-      metadata: payload.metadata,
+      metadata: mergedMetadata,
       title: payload.title ?? null,
       description: payload.description ?? null,
       ownerUserId: attribution.ownerUserId,
@@ -179,7 +226,19 @@ export async function POST(request: NextRequest): Promise<Response> {
       request.headers.get("user-agent"),
     );
 
-    const record = await createLinkyRecord(payload, attribution);
+    // Optional `Linky-Client: cursor/skill-v1` attribution for ops
+    // debugging. Malformed values are silently dropped rather than
+    // rejecting the whole request — a bad client header should never
+    // break an agent workflow.
+    const clientAttribution = parseClientAttributionHeader(
+      request.headers.get("linky-client"),
+    );
+
+    const record = await createLinkyRecord(
+      payload,
+      attribution,
+      clientAttribution,
+    );
 
     // Mint a claim token iff the Linky ended up anonymous. Signed-in
     // callers already have ownership attributed; minting a token for them

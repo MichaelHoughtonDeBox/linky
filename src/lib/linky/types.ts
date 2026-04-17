@@ -42,11 +42,21 @@ export type CreateLinkyPayload = {
 export type CreateLinkyResponse = {
   slug: string;
   url: string;
-  // Present when the Linky was created anonymously. Clicking this URL
+  // Present when the Linky was created anonymously. Clicking the URL
   // prompts the visitor to sign in, then transfers ownership to their
   // Clerk user / active org.
   claimUrl?: string;
   claimExpiresAt?: string;
+  // The raw token by itself — useful for agents that want to persist the
+  // secret independently of the full URL (for re-assembly against a
+  // different base URL, or storage in a secret manager). ONLY returned
+  // ONCE at creation time; a lost token cannot be recovered, the anonymous
+  // Linky must be re-created. This matches the ergonomics agents expect
+  // after working with other agent-first publishing products.
+  claimToken?: string;
+  // Human-readable warning string that agents/CLIs can surface verbatim.
+  // Present only when `claimToken` is present.
+  warning?: string;
 };
 
 export type LinkyOwner =

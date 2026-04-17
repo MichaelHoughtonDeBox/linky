@@ -152,6 +152,34 @@ Route handlers catch these explicitly and translate to JSON responses. Unexpecte
 
 ---
 
+## Server-injected metadata
+
+Some request fields are set by the server, not the caller, and live under
+the reserved `metadata._linky` namespace on each Linky so they don't
+collide with caller-supplied keys:
+
+- **`metadata._linky.client`** — value of the optional `Linky-Client`
+  request header. Convention: `<tool>/<version>` (e.g. `cursor/skill-v1`).
+  Malformed values are silently dropped by `parseClientAttributionHeader`.
+  Any caller attempt to set `metadata._linky` directly is stripped at the
+  route layer; attribution is always server-truthed.
+
+When adding new server-injected metadata, put it under `_linky.*` and
+never trust a caller-provided `_linky` object.
+
+## Claim-flow contract
+
+Anonymous create responses return **all three** of:
+- `claimToken` — the raw secret, returned once, non-recoverable.
+- `claimUrl` — a convenience URL that embeds the token.
+- `warning` — a human-readable "save this now" string the CLI / SDK can
+  surface verbatim.
+
+When you change the claim flow (expiry, token format, email binding,
+consume semantics), keep the one-shot guarantee intact: a token is
+handed back exactly once, cannot be re-issued for the same anonymous
+Linky, and cannot be recovered via any other endpoint.
+
 ## Don't do
 
 - **Do not put `middleware.ts` at the repo root.** The file is `src/proxy.ts` in Next.js 16. Nowhere else.
@@ -162,6 +190,8 @@ Route handlers catch these explicitly and translate to JSON responses. Unexpecte
 - **Do not refactor internal `linkies` names for cosmetic consistency with the UI.** The table name, repo file, and function names stay.
 - **Do not extend `maxUrlsPerLinky`, `maxLinkies`, or any entitlement blindly.** Those gate agent abuse. Change them only with a plan.
 - **Do not add a new public endpoint without listing it in `README.md` and updating `src/proxy.ts` matchers** if it needs auth.
+- **Do not treat `metadata._linky` as caller-writable.** Server-owned. Strip, don't merge.
+- **Do not add an endpoint that re-issues a claim token for an existing anonymous Linky.** Breaks the one-shot contract. If you need a recovery flow, design it against `creator_fingerprint` with explicit product review.
 
 ---
 

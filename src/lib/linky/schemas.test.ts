@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { LinkyError } from "./errors";
 import {
+  parseClientAttributionHeader,
   parseCreateLinkyPayload,
   parsePatchLinkyPayload,
 } from "./schemas";
@@ -144,5 +145,58 @@ describe("parsePatchLinkyPayload", () => {
     });
     expect(result.urlMetadata?.length).toBe(2);
     expect(result.urlMetadata?.[0]?.note).toBe("one");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseClientAttributionHeader
+//
+// Silently-dropping parser by design — a malformed `Linky-Client` header
+// should never break an agent's create call, so every "reject" path returns
+// undefined rather than throwing.
+// ---------------------------------------------------------------------------
+
+describe("parseClientAttributionHeader", () => {
+  it("accepts the canonical tool/version shape", () => {
+    expect(parseClientAttributionHeader("cursor/skill-v1")).toBe(
+      "cursor/skill-v1",
+    );
+  });
+
+  it("accepts simple tool names without a version", () => {
+    expect(parseClientAttributionHeader("claude-desktop")).toBe(
+      "claude-desktop",
+    );
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(parseClientAttributionHeader("  my-bot  ")).toBe("my-bot");
+  });
+
+  it("allows dots, underscores, plus signs, and colons", () => {
+    expect(parseClientAttributionHeader("my-ci-bot.deploys_v2+1:beta")).toBe(
+      "my-ci-bot.deploys_v2+1:beta",
+    );
+  });
+
+  it("drops values containing spaces", () => {
+    expect(parseClientAttributionHeader("cursor skill v1")).toBeUndefined();
+  });
+
+  it("drops values containing disallowed punctuation", () => {
+    expect(parseClientAttributionHeader("cursor<script>")).toBeUndefined();
+    expect(parseClientAttributionHeader('"quoted"')).toBeUndefined();
+  });
+
+  it("drops values longer than the length cap", () => {
+    const tooLong = "x".repeat(200);
+    expect(parseClientAttributionHeader(tooLong)).toBeUndefined();
+  });
+
+  it("returns undefined for null, undefined, empty string, or non-strings", () => {
+    expect(parseClientAttributionHeader(null)).toBeUndefined();
+    expect(parseClientAttributionHeader(undefined)).toBeUndefined();
+    expect(parseClientAttributionHeader("")).toBeUndefined();
+    expect(parseClientAttributionHeader("   ")).toBeUndefined();
   });
 });

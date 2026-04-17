@@ -141,19 +141,28 @@ Request:
 }
 ```
 
-Response:
+Response (anonymous create — signed-in callers omit the `claim*` + `warning` fields):
 
 ```json
 {
   "slug": "x8q2m4k",
   "url": "https://getalinky.com/l/x8q2m4k",
-  "claimUrl": "https://getalinky.com/claim/B6p...",
-  "claimExpiresAt": "2026-05-16T12:00:00.000Z"
+  "claimUrl": "https://getalinky.com/claim/B6p…",
+  "claimToken": "B6p…",
+  "claimExpiresAt": "2026-05-16T12:00:00.000Z",
+  "warning": "Save claimToken and claimUrl now — they are returned only once and cannot be recovered."
 }
 ```
 
-`claimUrl` and `claimExpiresAt` are returned only for anonymous creates.
-Signed-in callers already own the Linky and do not need them.
+The `claimToken` is the raw secret; `claimUrl` is a convenience that wraps
+it. Agents that want to store the secret in a key-manager (and re-assemble
+the URL against a different base later) should persist the token. **Returned
+once, cannot be recovered.**
+
+Optional request headers:
+- `Linky-Client: <tool>/<version>` — attribute the call to an integration
+  (e.g. `cursor/skill-v1`). Used for ops debugging. Malformed values are
+  silently dropped; never breaks the call. Persisted under `metadata._linky.client`.
 
 Errors:
 - `400`: invalid payload (URLs, metadata, email, URL count exceeds plan limit)
@@ -308,6 +317,40 @@ second time).
    `https://<your-domain>/api/webhooks/clerk` and `.../stripe` with the
    signing secrets that match the env vars.
 6. Add your custom domain in Vercel and point DNS records.
+
+## Trust & lifecycle policy
+
+These are deliberate, non-obvious product decisions. If you're evaluating
+Linky against other agent-publishing tools, read this section first —
+several of these are different by design.
+
+- **Anonymous Linkies are permanent.** No TTL. `POST /api/links` without a
+  Clerk session creates a bundle that stays live at `/l/<slug>` forever.
+  If nobody claims it in 30 days the ownership window closes and the bundle
+  becomes effectively uneditable forever — but the public URL keeps working.
+  Rationale: agents emit valuable output we don't want to GC; humans tend to
+  share URLs days or weeks after creation.
+- **Anonymous Linkies are immutable.** There is no anonymous-edit path —
+  no password, no claim-token-as-edit-credential. A URL you share with the
+  world will never change under its readers. Rationale: trust.
+- **Claim tokens are returned once.** Lose the token, lose the ability to
+  bind the Linky to an account. Save `claimToken` + `claimUrl` to a secret
+  store at create time.
+- **Claim window: 30 days.** After that, the bundle stays public but
+  cannot be attributed to an account. Starts at create time, is not
+  extended by re-reads or passive activity.
+- **Org context wins at create.** If the caller has an active Clerk org,
+  `POST /api/links` attributes to the org (team-owned). Switch to Personal
+  to create individually-owned Linkies. Same rule applies to the claim
+  flow.
+- **Edits are append-only.** `PATCH /api/links/:slug` inserts a row into
+  `linky_versions`; old state is preserved forever. `DELETE /api/links/:slug`
+  soft-deletes (the public resolver returns 404; the row survives for
+  audit).
+- **Linky does not execute user content.** We store URLs; we do not host
+  HTML, JS, or files. No password walls on the bundle itself, no proxy
+  routes, no service variables. Access control for *who sees which URLs*
+  will be handled via identity-aware resolution (Sprint 2), not via gates.
 
 ## Roadmap
 
