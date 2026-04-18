@@ -9,10 +9,24 @@ import { getPgPool } from "./postgres";
 
 export type ApiKeyScope = "user" | "org";
 
+// Sprint 2.7 Chunk D: per-action scope claims. Independent of the
+// user/org ownership scope above — same word, different concept.
+// Keeping both names is deliberate: `scope` on ApiKeyRecord describes
+// which subject the key belongs to; `scopes` on the same record lists
+// what actions the key is allowed to perform.
+export type ApiKeyPermission = "links:read" | "links:write" | "keys:admin";
+
+export const API_KEY_PERMISSIONS: readonly ApiKeyPermission[] = [
+  "links:read",
+  "links:write",
+  "keys:admin",
+] as const;
+
 export type ApiKeyRecord = {
   id: number;
   name: string;
   scope: ApiKeyScope;
+  scopes: ApiKeyPermission[];
   keyPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
@@ -28,6 +42,7 @@ type DbApiKeyRow = {
   owner_user_id: string | null;
   owner_org_id: string | null;
   name: string;
+  scopes: unknown;
   created_by_clerk_user_id: string | null;
   created_at: Date | string;
   last_used_at: Date | string | null;
@@ -49,11 +64,88 @@ function mapDbRow(row: DbApiKeyRow): ApiKeyRecord {
     id: row.id,
     name: row.name,
     scope: row.owner_org_id ? "org" : "user",
+    scopes: normalizeScopes(row.scopes),
     keyPrefix: row.key_prefix,
     createdAt: toIso(row.created_at) ?? new Date(0).toISOString(),
     lastUsedAt: toIso(row.last_used_at),
     revokedAt: toIso(row.revoked_at),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Scope validation + expansion.
+//
+// `normalizeScopes(raw)` turns whatever the DB returned into a deduped,
+// allow-list-filtered ApiKeyPermission[]. Unknown scopes are silently
+// dropped on read (we don't want a bad row to break authentication for
+// the whole system) but REJECTED at mint time (see parseScopesInput).
+//
+// `expandScopes(stored)` applies implication rules:
+//   links:write  implies links:read
+//   keys:admin   implies links:write (and transitively links:read)
+// so a call-site can ask `expanded.has("links:read")` without first
+// checking for the write/admin upgrade path.
+//
+// Both helpers are pure. Tests in api-keys.test.ts lock the matrix.
+// ---------------------------------------------------------------------------
+
+function isApiKeyPermission(value: unknown): value is ApiKeyPermission {
+  return (
+    value === "links:read" ||
+    value === "links:write" ||
+    value === "keys:admin"
+  );
+}
+
+export function normalizeScopes(raw: unknown): ApiKeyPermission[] {
+  if (!Array.isArray(raw)) return [];
+  const deduped = new Set<ApiKeyPermission>();
+  for (const entry of raw) {
+    if (isApiKeyPermission(entry)) deduped.add(entry);
+  }
+  return Array.from(deduped);
+}
+
+export function expandScopes(stored: readonly ApiKeyPermission[]): Set<ApiKeyPermission> {
+  const out = new Set<ApiKeyPermission>();
+  for (const scope of stored) {
+    out.add(scope);
+    if (scope === "links:write") {
+      out.add("links:read");
+    }
+    if (scope === "keys:admin") {
+      out.add("links:read");
+      out.add("links:write");
+    }
+  }
+  return out;
+}
+
+export function parseScopesInput(raw: unknown): ApiKeyPermission[] {
+  // On mint, unknown scopes must REJECT — silent filtering could let a
+  // typo ("link:read") ship a key with fewer privileges than intended.
+  if (raw === undefined) {
+    // No scope supplied → default to today's full-edit behavior so Sprint 2.6
+    // automation that POSTs { name } without scopes does not regress.
+    return ["links:write"];
+  }
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new LinkyError(
+      "`scopes` must be a non-empty array of scope strings.",
+      { code: "BAD_REQUEST", statusCode: 400 },
+    );
+  }
+  const deduped = new Set<ApiKeyPermission>();
+  for (const entry of raw) {
+    if (!isApiKeyPermission(entry)) {
+      throw new LinkyError(
+        `Unknown scope '${String(entry)}'. Allowed: ${API_KEY_PERMISSIONS.join(", ")}.`,
+        { code: "BAD_REQUEST", statusCode: 400 },
+      );
+    }
+    deduped.add(entry);
+  }
+  return Array.from(deduped);
 }
 
 function subjectOwnershipClause(subject: SubjectOwnedApiKey): {
@@ -157,6 +249,7 @@ export async function listApiKeysForSubject(
       owner_user_id,
       owner_org_id,
       name,
+      scopes,
       created_by_clerk_user_id,
       created_at,
       last_used_at,
@@ -174,6 +267,7 @@ export async function listApiKeysForSubject(
 export async function createApiKeyForSubject(input: {
   subject: SubjectOwnedApiKey;
   name: string;
+  scopes: ApiKeyPermission[];
   createdByClerkUserId: string;
 }): Promise<{ apiKey: ApiKeyRecord; rawKey: string }> {
   const pool = getPgPool();
@@ -188,9 +282,10 @@ export async function createApiKeyForSubject(input: {
       owner_user_id,
       owner_org_id,
       name,
+      scopes,
       created_by_clerk_user_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6)
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
     RETURNING
       id,
       key_prefix,
@@ -198,6 +293,7 @@ export async function createApiKeyForSubject(input: {
       owner_user_id,
       owner_org_id,
       name,
+      scopes,
       created_by_clerk_user_id,
       created_at,
       last_used_at,
@@ -209,6 +305,7 @@ export async function createApiKeyForSubject(input: {
       input.subject.type === "user" ? input.subject.userId : null,
       input.subject.type === "org" ? input.subject.orgId : null,
       input.name,
+      JSON.stringify(input.scopes),
       input.createdByClerkUserId,
     ],
   );
@@ -239,6 +336,7 @@ export async function revokeApiKeyForSubject(input: {
       owner_user_id,
       owner_org_id,
       name,
+      scopes,
       created_by_clerk_user_id,
       created_at,
       last_used_at,
@@ -272,6 +370,7 @@ export async function authenticateApiKey(
       owner_user_id,
       owner_org_id,
       name,
+      scopes,
       created_by_clerk_user_id,
       created_at,
       last_used_at,
@@ -283,6 +382,8 @@ export async function authenticateApiKey(
   if (result.rowCount === 0) return null;
 
   const row = result.rows[0];
+  const scopes = normalizeScopes(row.scopes);
+
   if (row.owner_org_id) {
     // Org-scoped automation acts only as the org itself. We deliberately do
     // not smuggle a user identity through bearer auth — that would let a team
@@ -292,6 +393,7 @@ export async function authenticateApiKey(
       orgId: row.owner_org_id,
       userId: null,
       role: null,
+      scopes,
     };
   }
 
@@ -299,6 +401,7 @@ export async function authenticateApiKey(
     return {
       type: "user",
       userId: row.owner_user_id,
+      scopes,
     };
   }
 

@@ -2,7 +2,11 @@ import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
 
-import { authenticateApiKey } from "./api-keys";
+import {
+  authenticateApiKey,
+  expandScopes,
+  type ApiKeyPermission,
+} from "./api-keys";
 
 // ---------------------------------------------------------------------------
 // Authenticated subject model.
@@ -33,11 +37,18 @@ export type OrgSubject = {
   // `deriveMembershipRole` before making an access decision so the mapping
   // lives in one place.
   role: string | null;
+  // Sprint 2.7 Chunk D: scope claims attached to the authenticating API key.
+  // `undefined` means "session subject — no scope limit applies" (signed-in
+  // humans are not limited by the key model). A present array is the
+  // stored scope list (post-normalization); use `subjectHasScope` to ask
+  // implication-aware questions.
+  scopes?: ApiKeyPermission[];
 };
 
 export type UserSubject = {
   type: "user";
   userId: string;
+  scopes?: ApiKeyPermission[];
 };
 
 export type AnonymousSubject = {
@@ -225,6 +236,43 @@ export function roleOfSubject(subject: AuthSubject): MembershipRole {
   if (subject.type === "user") return "admin";
   if (subject.type === "anonymous") return "viewer";
   return deriveMembershipRole(subject.role);
+}
+
+// ---------------------------------------------------------------------------
+// Scope check (Sprint 2.7 Chunk D).
+//
+// Session subjects (browser Clerk auth) ignore scope — a signed-in human is
+// not scope-limited by the key model. Only bearer-auth subjects carry
+// `scopes`, and `subjectHasScope` respects the implication rules from
+// `api-keys.ts` (write -> read, admin -> write + read).
+//
+// Call sites pair this with the existing role check: the scope is a cap
+// on the API KEY's authority, the role is a cap on the ACTING IDENTITY's
+// authority. Both must pass.
+// ---------------------------------------------------------------------------
+
+export function subjectHasScope(
+  subject: AuthSubject,
+  required: ApiKeyPermission,
+): boolean {
+  if (subject.type === "anonymous") return false;
+  if (!subject.scopes) {
+    // No scopes attached → session subject → full authority. User subjects
+    // and Clerk-session org subjects fall through this path.
+    return true;
+  }
+  return expandScopes(subject.scopes).has(required);
+}
+
+export function requireScope(
+  subject: AuthSubject,
+  required: ApiKeyPermission,
+): void {
+  if (!subjectHasScope(subject, required)) {
+    throw new ForbiddenError(
+      `This API key does not carry the '${required}' scope. Mint a new key with '${required}' or use a key of higher authority.`,
+    );
+  }
 }
 
 export function deriveMembershipRole(
