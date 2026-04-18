@@ -33,6 +33,12 @@ export const DOCS_NAV: DocsNavGroup[] = [
     links: [{ href: "/docs/claim", label: "Claim flow" }],
   },
   {
+    label: "Teams",
+    links: [
+      { href: "/docs/access-control", label: "Access control" },
+    ],
+  },
+  {
     label: "Reference",
     links: [
       { href: "/docs/api", label: "API" },
