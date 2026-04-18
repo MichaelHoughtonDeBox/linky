@@ -1,4 +1,14 @@
 @import "tailwindcss";
+/*
+  Canonical Linky design tokens. The product consumes the subset of these
+  tokens that already had aliases below (--background, --foreground, --panel,
+  --panel-border, --muted, --accent, --accent-2, --danger). Keeping the full
+  catalog loaded means the /design route, slide exports, and one-off marketing
+  surfaces all share a single source of truth with the runtime product.
+  Never edit tokens here — update design/tokens.json + design/tokens.css and
+  let this @import follow.
+*/
+@import "../../design/tokens.css";
 
 :root {
   --background: #ffffff;

@@ -8,6 +8,7 @@ type SiteHeaderProps = {
   currentPath?:
     | "/"
     | "/docs"
+    | "/design"
     | "/signin"
     | "/signup"
     | "/dashboard"
@@ -38,6 +39,12 @@ export function SiteHeader({ currentPath = "/" }: SiteHeaderProps) {
           className={`site-nav-link ${currentPath === "/docs" ? "is-active" : ""}`}
         >
           Docs
+        </Link>
+        <Link
+          href="/design"
+          className={`site-nav-link ${currentPath === "/design" ? "is-active" : ""}`}
+        >
+          Design
         </Link>
 
         {/*

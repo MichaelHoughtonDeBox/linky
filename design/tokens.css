@@ -1,0 +1,119 @@
+/*
+  Linky design tokens — CSS custom properties.
+  Mirrors design/tokens.json 1:1. DO NOT EDIT one without the other.
+
+  Import sites:
+    - src/app/globals.css  (the subset that the product uses today lives inline
+      there; this file is the full catalog for slides, email templates,
+      sandbox pages, and the /design living style guide).
+
+  Naming: --linky-<category>-<slot>. Prefixed so tokens coexist with Tailwind
+  v4 theme vars (`--color-*`, `--font-*`) without collision.
+*/
+
+:root {
+  /* Color */
+  --linky-color-ink:           #111111;
+  --linky-color-paper:         #ffffff;
+  --linky-color-mute:          #666666;
+  --linky-color-line:          #d9d9d9;
+  --linky-color-line-strong:   #111111;
+  --linky-color-surface-soft:  #fafafa;
+  --linky-color-code-fill:     #f4f4f4;
+  --linky-color-danger:        #9a2f24;
+  --linky-color-scrim:         rgba(17, 17, 17, 0.03);
+
+  /* Type families */
+  --linky-font-display: "Bricolage Grotesque", "Avenir Next", sans-serif;
+  --linky-font-mono:    "IBM Plex Mono", Menlo, Monaco, monospace;
+
+  /* Type scale */
+  --linky-size-micro:   0.66rem;
+  --linky-size-xs:      0.72rem;
+  --linky-size-sm:      0.82rem;
+  --linky-size-base:    0.88rem;
+  --linky-size-body:    1rem;
+  --linky-size-lead:    1.25rem;
+  --linky-size-h3:      1.35rem;
+  --linky-size-h2:      1.875rem;
+  --linky-size-h1:      3rem;
+  --linky-size-display: 3.75rem;
+
+  /* Tracking */
+  --linky-track-display: -0.02em;
+  --linky-track-lead:    -0.01em;
+  --linky-track-body:    0;
+  --linky-track-kicker:  0.16em;
+  --linky-track-chip:    0.05em;
+
+  /* Leading */
+  --linky-lead-tight:   0.9;
+  --linky-lead-snug:    1.2;
+  --linky-lead-normal:  1.44;
+  --linky-lead-relaxed: 1.62;
+
+  /* Weights */
+  --linky-weight-regular:  400;
+  --linky-weight-medium:   500;
+  --linky-weight-semibold: 600;
+
+  /* Space */
+  --linky-space-0:  0;
+  --linky-space-1:  0.25rem;
+  --linky-space-2:  0.5rem;
+  --linky-space-3:  0.75rem;
+  --linky-space-4:  1rem;
+  --linky-space-5:  1.25rem;
+  --linky-space-6:  1.5rem;
+  --linky-space-8:  2rem;
+  --linky-space-10: 2.5rem;
+  --linky-space-12: 3rem;
+  --linky-space-16: 4rem;
+
+  /* Section rhythm — clamp() so slides and site agree. */
+  --linky-section-gap-small: clamp(1.75rem, 4vw, 2.75rem);
+  --linky-section-gap:       clamp(3.25rem, 8vw, 6rem);
+  --linky-section-gap-large: clamp(4.25rem, 10vw, 7rem);
+
+  /* Radii */
+  --linky-radius-square: 0;
+  --linky-radius-pill:   9999px;
+
+  /* Borders */
+  --linky-border-hair: 1px;
+  --linky-border-rule: 2px;
+
+  /* Shadows */
+  --linky-shadow-none:  none;
+  --linky-shadow-focus: 0 0 0 1px rgba(17, 17, 17, 0.22), 0 14px 32px rgba(17, 17, 17, 0.12);
+  --linky-shadow-cta:   0 10px 20px rgba(17, 17, 17, 0.14);
+  --linky-shadow-copy:  0 6px 16px rgba(17, 17, 17, 0.08);
+  --linky-shadow-shell: 0 12px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  /* Motion */
+  --linky-duration-instant:  80ms;
+  --linky-duration-fast:     120ms;
+  --linky-duration-base:     160ms;
+  --linky-duration-entrance: 460ms;
+
+  --linky-ease-standard:  ease;
+  --linky-ease-out:       ease-out;
+  --linky-ease-in-out:    cubic-bezier(0.4, 0, 0.2, 1);
+  --linky-ease-spring-ish: cubic-bezier(0.2, 0.9, 0.3, 1);
+
+  --linky-lift:  1px;
+  --linky-rise: 12px;
+
+  /* Breakpoints (informational — media queries cannot read custom properties). */
+  --linky-bp-sm:   640px;
+  --linky-bp-md:   780px;
+  --linky-bp-docs: 900px;
+  --linky-bp-lg:   1080px;
+  --linky-bp-xl:   1280px;
+
+  /* Z-index */
+  --linky-z-base:    0;
+  --linky-z-sticky:  10;
+  --linky-z-overlay: 40;
+  --linky-z-toast:   60;
+}
