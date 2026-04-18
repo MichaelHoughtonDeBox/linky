@@ -28,6 +28,7 @@ The short URL resolves to `/l/[slug]`, where users click **Open All** to launch 
 - **Launcher page** with popup-blocking guidance and manual fallback links.
 - **Agent-friendly CLI** with `--json`, `--email` (for the claim flow), and coloured TTY output.
 - **Programmatic SDK** for scripts and agent tools.
+- **Design system** — tokens, voice rules, component catalog, slide + motion recipes. See [`design/`](./design/) or the live style guide at [`/design`](https://getalinky.com/design).
 
 ## Architecture
 
@@ -625,6 +626,18 @@ npm run check      # lint + typecheck + test
 npm run db:schema  # Apply db/schema.sql (fresh install)
 npm run db:migrate # Apply db/migrations/*.sql in order (upgrade existing DB)
 ```
+
+## Design system
+
+Everything Linky looks like, speaks like, and moves like is codified in the repo:
+
+- **[`design/tokens.json`](./design/tokens.json)** — canonical tokens (W3C DTCG format). Colors, type scale, space, radius, shadow, motion, breakpoints.
+- **[`design/tokens.css`](./design/tokens.css)** — same tokens as CSS custom properties. Imported by `src/app/globals.css`.
+- **[`design/brand.md`](./design/brand.md)** — positioning, voice, product language, sanctioned taglines, retired copy, competitive framing, founder-voice split.
+- **[`design/color.md`](./design/color.md)**, **[`typography.md`](./design/typography.md)**, **[`logo.md`](./design/logo.md)**, **[`layout.md`](./design/layout.md)**, **[`motion.md`](./design/motion.md)**, **[`components.md`](./design/components.md)**, **[`writing.md`](./design/writing.md)**, **[`slides.md`](./design/slides.md)** — one doc per concern, each deriving from the tokens above.
+- **[`/design`](https://getalinky.com/design)** — live style guide. Renders every swatch, type specimen, and component directly from `design/tokens.json`, so docs cannot drift from what ships.
+
+Strategy (positioning, personas, launch plan) lives in [`.agents/product-marketing-context.md`](./.agents/product-marketing-context.md). The design system derives its voice rules from that doc — when PMC changes, update `design/brand.md` and `design/writing.md` in the same PR.
 
 ## Contributing
 
