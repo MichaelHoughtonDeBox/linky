@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeViewerHashDay,
+  resolveInsightsRange,
   resolveSubjectKey,
   todayUtcYyyyMmDd,
 } from "./launcher-events-repository";
@@ -163,5 +164,23 @@ describe("resolveSubjectKey", () => {
     });
     expect(out.viewerState).toBe("anonymous");
     expect(out.subjectKey).toBe("ip:unknown");
+  });
+});
+
+describe("resolveInsightsRange", () => {
+  it("accepts the three valid ranges verbatim", () => {
+    expect(resolveInsightsRange("7d")).toBe("7d");
+    expect(resolveInsightsRange("30d")).toBe("30d");
+    expect(resolveInsightsRange("90d")).toBe("90d");
+  });
+
+  it("defaults to 30d for null / undefined / invalid input", () => {
+    expect(resolveInsightsRange(null)).toBe("30d");
+    expect(resolveInsightsRange(undefined)).toBe("30d");
+    expect(resolveInsightsRange("365d")).toBe("30d");
+    expect(resolveInsightsRange("garbage")).toBe("30d");
+    // Chunk B intentionally caps at 90d; paid-plan retention
+    // extensions can widen this later without a breaking change.
+    expect(resolveInsightsRange("180d")).toBe("30d");
   });
 });
