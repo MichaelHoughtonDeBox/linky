@@ -77,7 +77,14 @@ NEXT_PUBLIC_CLERK_SIGN_UP_URL=/signup
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SIGNING_SECRET=whsec_...
 
-# Optional — rate-limit overrides (anonymous /api/links only)
+# Required — owner-side analytics (Sprint 2.7)
+# 32+ character opaque string used to salt the per-day viewer hash on
+# launcher_events rows. Rotate freely; rotating resets unique-viewer
+# accounting for subsequent days (past days stay internally consistent).
+# Leave empty to disable analytics writes — the launcher keeps working.
+LINKY_DAILY_SALT=change-me-to-a-32-plus-char-secret
+
+# Optional — rate-limit overrides (anonymous /api/links + /api/links/:slug/events)
 LINKY_RATE_LIMIT_WINDOW_MS=60000
 LINKY_RATE_LIMIT_MAX_REQUESTS=30
 ```
