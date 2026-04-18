@@ -58,6 +58,18 @@ export default clerkMiddleware(async (auth, req) => {
     await auth.protect();
   }
 
+  // Sprint 2.7 Chunk B: GET /api/links/:slug/insights is owner+role gated
+  // via `requireCanViewLinky` inside the route. Edge-gate here ensures the
+  // handler is only reached for signed-in users or bearer-auth callers —
+  // keeps 401 surfacing consistent with the other owner routes.
+  if (
+    req.method === "GET" &&
+    /^\/api\/links\/[^/]+\/insights$/.test(req.nextUrl.pathname)
+  ) {
+    if (hasBearerToken) return;
+    await auth.protect();
+  }
+
   if (req.method === "GET" && req.nextUrl.pathname === "/api/me/links") {
     if (hasBearerToken) return;
     await auth.protect();
