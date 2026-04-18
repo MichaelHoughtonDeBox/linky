@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { requireAuthSubject } from "@/lib/server/auth";
+import { requireAuthSubject, roleOfSubject } from "@/lib/server/auth";
 import {
   listApiKeysForSubject,
   type ApiKeyRecord,
@@ -35,6 +36,15 @@ function toClientRecord(record: ApiKeyRecord) {
 
 export default async function DashboardApiKeysPage() {
   const subject = await requireAuthSubject();
+
+  // Sprint 2.7 Chunk C: key management is admin-only on org-owned
+  // subjects. Non-admins bounce back to /dashboard — the API route
+  // enforces the same rule server-side so a direct curl can't bypass
+  // this redirect.
+  if (subject.type === "org" && roleOfSubject(subject) !== "admin") {
+    redirect("/dashboard");
+  }
+
   const keys = await listApiKeysForSubject(subject);
 
   return (

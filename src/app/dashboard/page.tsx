@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import type { LinkyRecord } from "@/lib/linky/types";
-import { requireAuthSubject } from "@/lib/server/auth";
+import { requireAuthSubject, roleOfSubject } from "@/lib/server/auth";
 import { getPublicBaseUrl } from "@/lib/server/config";
 import { listLinkiesForSubject } from "@/lib/server/linkies-repository";
 
@@ -97,6 +97,12 @@ export default async function DashboardPage() {
   const subject = await requireAuthSubject();
   const baseUrl = getPublicBaseUrl();
 
+  // Sprint 2.7 Chunk C: non-admin org members don't see the API-keys
+  // link. User subjects are always admin of themselves so personal
+  // keys stay reachable.
+  const canManageKeys =
+    subject.type === "user" || roleOfSubject(subject) === "admin";
+
   const linkies =
     subject.type === "org"
       ? await listLinkiesForSubject({
@@ -134,12 +140,14 @@ export default async function DashboardPage() {
           or team.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href="/dashboard/api-keys"
-            className="terminal-secondary px-3 py-1.5 text-xs sm:text-sm"
-          >
-            Manage API keys
-          </Link>
+          {canManageKeys ? (
+            <Link
+              href="/dashboard/api-keys"
+              className="terminal-secondary px-3 py-1.5 text-xs sm:text-sm"
+            >
+              Manage API keys
+            </Link>
+          ) : null}
         </div>
       </header>
 

@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import {
   canEditLinky,
   requireAuthSubject,
+  roleOfSubject,
 } from "@/lib/server/auth";
 import { getPublicBaseUrl } from "@/lib/server/config";
 import {
@@ -35,10 +36,13 @@ export default async function DashboardLinkyEditPage({ params }: PageProps) {
   };
 
   // If the active subject can't edit this Linky (wrong org context, not an
-  // owner, or attempting to manage an anonymous Linky) send them to the
-  // dashboard home. We use a redirect rather than a hard 403 so the flow is
-  // friendly if someone clicks a stale link.
-  if (!canEditLinky(subject, ownership)) {
+  // owner, viewer-only role on org-owned, or attempting to manage an
+  // anonymous Linky) send them to the dashboard home. We use a redirect
+  // rather than a hard 403 so the flow is friendly if someone clicks a
+  // stale link. Role is derived from `session.orgRole` via `roleOfSubject`
+  // — viewers land back on `/dashboard`; a read-only "insights only" page
+  // will open to viewers when Chunk B ships.
+  if (!canEditLinky(subject, ownership, roleOfSubject(subject))) {
     redirect("/dashboard");
   }
 
