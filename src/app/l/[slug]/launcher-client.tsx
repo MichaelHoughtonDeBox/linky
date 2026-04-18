@@ -61,6 +61,39 @@ export function LinkyLauncher({
 }: LinkyLauncherProps) {
   const [openSummary, setOpenSummary] = useState<OpenSummary | null>(null);
 
+  // Sprint 2.7 Chunk A — Open All analytics ping.
+  //
+  // Fire-and-forget POST to /api/links/:slug/events. We deliberately don't
+  // await it or surface failures to the user: the button's real job was
+  // already done (tabs opened) by the time this runs. The endpoint is
+  // rate-limited server-side and swallows DB errors.
+  //
+  // `sendBeacon` would be marginally more reliable during tab unload, but
+  // browsers cap its payload size and some adblockers shadow-block it. A
+  // plain keepalive fetch is the dependable path for our tiny JSON body.
+  const reportOpenAllClick = () => {
+    try {
+      fetch(`/api/links/${encodeURIComponent(slug)}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "open_all",
+          matchedRuleId: matchedRuleId ?? null,
+        }),
+        keepalive: true,
+      }).catch(() => {
+        // Network blip / adblock / offline — analytics are best-effort.
+      });
+    } catch {
+      // Older browsers without keepalive. Not worth a fallback path.
+    }
+  };
+
+  const handleOpenAll = () => {
+    reportOpenAllClick();
+    setOpenSummary(openAllUrls(urls));
+  };
+
   // Locale-dependent formatting is the classic hydration-mismatch trap:
   // `toLocaleString()` without an explicit locale uses the runtime default,
   // which differs between Node (often en-US) and the browser (user config).
@@ -158,7 +191,7 @@ export function LinkyLauncher({
 
         <section className="terminal-card mb-5 p-4">
           <button
-            onClick={() => setOpenSummary(openAllUrls(urls))}
+            onClick={handleOpenAll}
             className="terminal-action w-full px-6 py-3 text-sm sm:text-base"
             type="button"
           >

@@ -1,7 +1,12 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
+
+import { auth } from "@clerk/nextjs/server";
 
 import { evaluatePolicy, isEmptyPolicy } from "@/lib/linky/policy";
 import { getPublicBaseUrl } from "@/lib/server/config";
+import { recordView } from "@/lib/server/launcher-events-repository";
 import { getLinkyRecordBySlug } from "@/lib/server/linkies-repository";
 import { buildViewerContext } from "@/lib/server/viewer-context";
 
@@ -77,6 +82,40 @@ export default async function LinkySlugPage({ params }: LinkySlugPageProps) {
       matchedRuleName = null;
     }
   }
+
+  // Sprint 2.7 Chunk A — owner-side analytics write.
+  //
+  // Fire-and-forget via Next 16's `after()`: the launcher HTML streams to
+  // the viewer first, the event insert runs after the response has closed.
+  // A DB outage or a missing LINKY_DAILY_SALT cannot delay or 500 the
+  // launcher — the repo swallows its own errors defensively, and we wrap
+  // the `after()` body in try/catch too so a synchronous throw (e.g.
+  // `headers()` rejection) never surfaces.
+  //
+  // We skip the write for soft-deleted Linkies (already handled by
+  // `notFound()` above) and for Linky rows whose id is unstable — there
+  // are none today, but the defensive guard keeps the write path narrow.
+  after(async () => {
+    try {
+      const requestHeaders = await headers();
+      const forwardedFor = requestHeaders.get("x-forwarded-for") ?? "";
+      const clientIp =
+        forwardedFor.split(",")[0]?.trim() ||
+        requestHeaders.get("x-real-ip")?.trim() ||
+        "unknown";
+
+      const session = await auth();
+
+      await recordView({
+        linkyId: linky.id,
+        matchContext: { matchedRuleId },
+        clerkUserId: session.userId ?? null,
+        clientIp,
+      });
+    } catch (error) {
+      console.error("[launcher] view-event after() failed:", error);
+    }
+  });
 
   return (
     <LinkyLauncher
