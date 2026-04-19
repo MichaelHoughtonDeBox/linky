@@ -201,19 +201,34 @@ export function parseScopesInput(raw: unknown): ApiKeyPermission[] {
   return Array.from(deduped);
 }
 
-function subjectOwnershipClause(subject: SubjectOwnedApiKey): {
-  clause: string;
-  params: string[];
-} {
+// Builds the `WHERE owner_* = $N AND owner_* IS NULL` predicate that scopes
+// a query to a subject's own keys. Callers that prepend other parameters
+// (e.g. the revoke query, which binds `id = $1` first) must pass
+// `paramOffset` = the number of parameters already consumed, so the
+// placeholder in this clause is numbered correctly in the final SQL.
+//
+// Default offset 0 preserves the original "just $1" shape for
+// single-parameter queries (e.g. listApiKeysForSubject).
+//
+// Sprint 2.8 post-launch fix — Bug #4: the revoke path concatenated this
+// clause after `id = $1`, producing a query where `$1` was bound to both
+// the api_keys.id (integer) and the owner_user_id (text). pg either
+// errored or returned zero rows depending on types. No test mocked the
+// real pg client so the collision shipped silently.
+function subjectOwnershipClause(
+  subject: SubjectOwnedApiKey,
+  paramOffset = 0,
+): { clause: string; params: string[] } {
+  const placeholder = `$${paramOffset + 1}`;
   if (subject.type === "org") {
     return {
-      clause: "owner_org_id = $1 AND owner_user_id IS NULL",
+      clause: `owner_org_id = ${placeholder} AND owner_user_id IS NULL`,
       params: [subject.orgId],
     };
   }
 
   return {
-    clause: "owner_user_id = $1 AND owner_org_id IS NULL",
+    clause: `owner_user_id = ${placeholder} AND owner_org_id IS NULL`,
     params: [subject.userId],
   };
 }
@@ -381,7 +396,10 @@ export async function revokeApiKeyForSubject(input: {
   subject: SubjectOwnedApiKey;
 }): Promise<ApiKeyRecord | null> {
   const pool = getPgPool();
-  const ownership = subjectOwnershipClause(input.subject);
+  // `id = $1` consumes the first placeholder slot; the ownership clause's
+  // placeholder must start at $2. See subjectOwnershipClause for the full
+  // rationale + the post-launch regression this closed.
+  const ownership = subjectOwnershipClause(input.subject, 1);
 
   const result = await pool.query<DbApiKeyRow>(
     `

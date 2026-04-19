@@ -427,6 +427,7 @@ describe("tool handlers", () => {
         scope: "user",
         scopes: ["links:read"],
         keyPrefix: "lkyu_deadbeef",
+        rateLimitPerHour: 1000,
         createdAt: "",
         lastUsedAt: null,
         revokedAt: null,
@@ -439,7 +440,59 @@ describe("tool handlers", () => {
       userSubject(),
     );
     const [arg] = asMock(keysService.createKey).mock.calls[0];
-    expect(arg).toEqual({ name: "ci bot", scopes: ["links:read"] });
+    expect(arg).toMatchObject({ name: "ci bot", scopes: ["links:read"] });
+    // Sprint 2.8 post-launch fix — Bug #8: rateLimitPerHour is now part
+    // of the forwarded shape even when absent, so the service gets a
+    // chance to validate + apply its own default. Absent = `undefined`.
+    expect(arg).toHaveProperty("rateLimitPerHour", undefined);
+  });
+
+  it("keys_create forwards rateLimitPerHour when supplied", async () => {
+    // Sprint 2.8 post-launch fix — Bug #8: the previous handler dropped
+    // this arg on the floor, so every MCP-minted key got the default
+    // 1000/hour regardless of what the agent asked for. The HTTP POST
+    // path always honored it; only MCP was broken.
+    asMock(keysService.createKey).mockResolvedValueOnce({
+      apiKey: {
+        id: 2,
+        name: "low-limit bot",
+        scope: "user",
+        scopes: ["links:read"],
+        keyPrefix: "lkyu_deadbeef",
+        rateLimitPerHour: 50,
+        createdAt: "",
+        lastUsedAt: null,
+        revokedAt: null,
+      },
+      rawKey: "lkyu_deadbeef.secret",
+      warning: "save once",
+    });
+    await toolHandlers.keys_create(
+      { name: "low-limit bot", scopes: ["links:read"], rateLimitPerHour: 50 },
+      userSubject(),
+    );
+    const [arg] = asMock(keysService.createKey).mock.calls[0];
+    expect(arg).toEqual({
+      name: "low-limit bot",
+      scopes: ["links:read"],
+      rateLimitPerHour: 50,
+    });
+  });
+
+  it("keys_create schema advertises the rateLimitPerHour property", () => {
+    // Regression guard: if a future refactor strips the property from
+    // the JSON Schema, the MCP SDK would silently filter it out of
+    // tool-call arguments and Bug #8 would reappear. Pin the shape.
+    const def = toolDefinitions.find((d) => d.name === "keys_create");
+    expect(def).toBeDefined();
+    const schema = def!.inputSchema as {
+      properties: Record<string, unknown>;
+    };
+    expect(schema.properties).toHaveProperty("rateLimitPerHour");
+    expect(schema.properties.rateLimitPerHour).toMatchObject({
+      type: "integer",
+      minimum: 0,
+    });
   });
 
   it("keys_revoke requires an integer id", async () => {

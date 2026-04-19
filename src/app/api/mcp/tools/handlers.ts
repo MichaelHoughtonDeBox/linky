@@ -197,10 +197,15 @@ const keys_list: ToolHandler = async (_args, subject) => {
 };
 
 const keys_create: ToolHandler = async (args, subject) => {
+  // Sprint 2.8 post-launch fix — Bug #8: `rateLimitPerHour` was missing
+  // from the arg pass-through. The service layer already validates the
+  // value (see createKey in keys-service.ts) so we forward unknown
+  // shapes and let the service throw a typed error on anything bogus.
   const dto = await createKey(
     {
       name: args.name,
       scopes: args.scopes,
+      rateLimitPerHour: args.rateLimitPerHour,
     },
     subject,
   );

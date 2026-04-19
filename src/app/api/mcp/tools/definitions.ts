@@ -224,7 +224,7 @@ export const toolDefinitions: MCPToolDefinition[] = [
   {
     name: "keys_create",
     description:
-      "Mint a new API key owned by the caller (user or active org). Requires keys:admin. Returns the raw key ONCE — store it immediately; it cannot be recovered.",
+      "Mint a new API key owned by the caller (user or active org). Requires keys:admin. Returns the raw key ONCE — store it immediately; it cannot be recovered. Use `rateLimitPerHour` to cap throughput for agent-held keys (default 1000; 0 disables the limit).",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -234,6 +234,17 @@ export const toolDefinitions: MCPToolDefinition[] = [
           type: "array",
           items: { enum: ["links:read", "links:write", "keys:admin"] },
           minItems: 1,
+        },
+        // Sprint 2.8 post-launch fix — Bug #8: the initial tool shape
+        // omitted this property. HTTP POST /api/me/keys accepts it, but
+        // the MCP tool silently dropped it, so an agent minting a key
+        // via MCP always got the default 1000/hour. Now wired.
+        //
+        // Cap matches MAX_RATE_LIMIT_PER_HOUR in src/lib/server/api-keys.ts.
+        rateLimitPerHour: {
+          type: "integer",
+          minimum: 0,
+          maximum: 100000,
         },
       },
       required: ["name"],

@@ -88,28 +88,34 @@ export default async function LinkySlugPage({ params }: LinkySlugPageProps) {
   // Fire-and-forget via Next 16's `after()`: the launcher HTML streams to
   // the viewer first, the event insert runs after the response has closed.
   // A DB outage or a missing LINKY_DAILY_SALT cannot delay or 500 the
-  // launcher — the repo swallows its own errors defensively, and we wrap
-  // the `after()` body in try/catch too so a synchronous throw (e.g.
-  // `headers()` rejection) never surfaces.
+  // launcher — the repo swallows its own errors defensively.
   //
-  // We skip the write for soft-deleted Linkies (already handled by
-  // `notFound()` above) and for Linky rows whose id is unstable — there
-  // are none today, but the defensive guard keeps the write path narrow.
+  // Sprint 2.8 post-launch fix — Bug #3: the original implementation
+  // called `headers()` and `auth()` INSIDE the `after()` callback. In
+  // Next.js 16 both are request-scoped and reject once the response has
+  // closed, which happens before `after()` runs. The try/catch around the
+  // callback swallowed the rejection and logged to stderr, so view events
+  // silently dropped 100% of the time. The `open_all` path worked because
+  // it comes in as a fresh POST request with its own request context.
+  //
+  // Fix: resolve the request-scoped values (`clientIp`, `clerkUserId`)
+  // BEFORE calling `after()`, then pass them in as closure values so the
+  // callback has everything it needs without touching the request store.
+  const requestHeaders = await headers();
+  const forwardedForHeader = requestHeaders.get("x-forwarded-for") ?? "";
+  const clientIp =
+    forwardedForHeader.split(",")[0]?.trim() ||
+    requestHeaders.get("x-real-ip")?.trim() ||
+    "unknown";
+  const session = await auth();
+  const viewerClerkUserId = session.userId ?? null;
+
   after(async () => {
     try {
-      const requestHeaders = await headers();
-      const forwardedFor = requestHeaders.get("x-forwarded-for") ?? "";
-      const clientIp =
-        forwardedFor.split(",")[0]?.trim() ||
-        requestHeaders.get("x-real-ip")?.trim() ||
-        "unknown";
-
-      const session = await auth();
-
       await recordView({
         linkyId: linky.id,
         matchContext: { matchedRuleId },
-        clerkUserId: session.userId ?? null,
+        clerkUserId: viewerClerkUserId,
         clientIp,
       });
     } catch (error) {
