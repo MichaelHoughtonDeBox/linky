@@ -225,6 +225,33 @@ describe("LinkyClient.getVersions / getInsights / getLinky", () => {
       "https://linky.example/api/links/abc123",
     );
   });
+
+  // Sprint 2.8 post-launch fix — Bug #1: the HTTP GET handler was missing
+  // entirely until the post-launch fix PR. The SDK method always existed;
+  // it now has a route to hit. Pin that the SDK returns the RAW DTO (not
+  // `{linky: dto}`) so the CLI's `printLinkyDetail(dto)` keeps working.
+  // The route's response shape is matched accordingly.
+  it("getLinky returns the raw DTO from the server (not a wrapper)", async () => {
+    const serverResponse = {
+      slug: "abc123",
+      urls: ["https://example.com"],
+      urlMetadata: [{}],
+      title: "example",
+      description: null,
+      owner: { type: "user", userId: "user_alice" },
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      source: "sdk",
+    };
+    const spy = makeFetchSpy(() => okResponse(serverResponse));
+    const client = new LinkyClient({
+      baseUrl: "https://linky.example",
+      fetchImpl: spy,
+    });
+    const dto = await client.getLinky("abc123");
+    expect(dto).toEqual(serverResponse);
+    expect(dto).not.toHaveProperty("linky");
+  });
 });
 
 describe("LinkyClient keys surface", () => {
