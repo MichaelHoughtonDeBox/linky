@@ -3,6 +3,7 @@ export type LinkyErrorCode =
   | "INVALID_JSON"
   | "INVALID_URLS"
   | "RATE_LIMITED"
+  | "NOT_FOUND"
   | "INTERNAL_ERROR";
 
 type LinkyErrorOptions = {

@@ -7,7 +7,10 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // Unit tests live next to the code they cover. `src/**` is the Next.js
+    // app; `sdk/**` is the external JS SDK published to npm. Both trees
+    // run through the same vitest config.
+    include: ["src/**/*.test.ts", "sdk/**/*.test.js"],
     // Don't try to load `server-only` under test — it throws by design in
     // any non-server context. Stubbing keeps the tested modules' intent
     // visible (they should only be imported server-side) while letting

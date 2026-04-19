@@ -6,10 +6,21 @@
   "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./sdk": {
+      "types": "./sdk/client.d.ts",
+      "default": "./sdk/client.js"
+    }
   },
   "files": [
-    "cli",
+    "cli/index.js",
+    "sdk/client.js",
+    "sdk/client.d.ts",
+    "sdk/index.js",
+    "sdk/index.d.ts",
     "index.js",
     "index.d.ts",
     "README.md",

@@ -1,127 +1,70 @@
-const DEFAULT_BASE_URL =
-  process.env.LINKY_BASE_URL ||
-  process.env.LINKIE_URL ||
-  "https://getalinky.com";
+// Top-level @linky/linky entry.
+//
+// Historically this file hand-rolled the HTTP calls. As of Sprint 2.8
+// Chunk 0 we delegate to `LinkyClient` under `sdk/client.js` so the
+// widened SDK surface (Chunks A/B/C/D) is automatically available under
+// the default export without copy-pasting logic.
+//
+// The `createLinky` and `updateLinky` functions are preserved as top-level
+// helpers for backward compatibility with every consumer we've shipped.
+// They are thin adapters that translate the legacy "options bag"
+// convention into the `LinkyClient` method signatures, then reshape the
+// response so the return value matches what the pre-2.8 SDK returned.
+//
+// ESLint note: this file + `sdk/client.js` + `sdk/index.js` are the
+// CommonJS entry points npm publishes. Everything else in the repo is
+// TypeScript under ESM semantics and blocks `require()`. Disable the
+// rule file-locally — the CJS shape is load-bearing for `"main"` and
+// subpath exports against Node <22 without `"type": "module"`.
+/* eslint-disable @typescript-eslint/no-require-imports */
 
-function buildHeaders(client, apiKey) {
-  const headers = {
-    "content-type": "application/json",
-  };
+const { LinkyClient, LinkyApiError, DEFAULT_BASE_URL } = require("./sdk/client.js");
 
-  if (typeof client === "string" && client.trim().length > 0) {
-    headers["Linky-Client"] = client.trim();
-  }
-
-  if (typeof apiKey === "string" && apiKey.trim().length > 0) {
-    headers.authorization = `Bearer ${apiKey.trim()}`;
-  }
-
-  return headers;
-}
-
-async function parseJsonResponse(response) {
-  return response.json().catch(() => {
-    return {};
+// `options.fetchImpl` wins over `LinkyClient`'s default so tests that
+// passed a mocked `fetch` straight through to `createLinky` keep working.
+function buildClient({ baseUrl, apiKey, client, fetchImpl }) {
+  return new LinkyClient({
+    baseUrl,
+    apiKey,
+    client,
+    fetchImpl,
   });
 }
 
-function assertPatchPayload({
-  urls,
-  title,
-  description,
-  urlMetadata,
-  resolutionPolicy,
-}) {
-  const hasUpdate =
-    urls !== undefined ||
-    title !== undefined ||
-    description !== undefined ||
-    urlMetadata !== undefined ||
-    resolutionPolicy !== undefined;
+async function createLinky(options = {}) {
+  const {
+    urls,
+    baseUrl,
+    source = "sdk",
+    metadata,
+    email,
+    title,
+    description,
+    urlMetadata,
+    client,
+    resolutionPolicy,
+    fetchImpl,
+  } = options;
 
-  if (!hasUpdate) {
-    throw new Error(
-      "Provide at least one update field: urls, title, description, urlMetadata, or resolutionPolicy.",
-    );
-  }
+  const instance = buildClient({ baseUrl, client, fetchImpl });
 
-  if (urls !== undefined) {
-    assertUrlArray(urls);
-  }
-}
-
-function assertUrlArray(urls) {
-  if (!Array.isArray(urls) || urls.length === 0) {
-    throw new Error("`urls` must be a non-empty array of URL strings.");
-  }
-
-  urls.forEach((url, index) => {
-    if (typeof url !== "string" || url.trim().length === 0) {
-      throw new Error(`Invalid URL at index ${index}.`);
-    }
+  const data = await instance.createLinky({
+    urls,
+    source,
+    metadata,
+    email,
+    title,
+    description,
+    urlMetadata,
+    resolutionPolicy,
   });
-}
-
-async function createLinky({
-  urls,
-  baseUrl = DEFAULT_BASE_URL,
-  source = "sdk",
-  metadata,
-  email,
-  title,
-  description,
-  urlMetadata,
-  // Optional client attribution. Sent as a `Linky-Client` header so the
-  // server can attribute API calls to a specific integration for ops
-  // debugging. Format convention: `<tool>/<version>` (e.g. "cursor/skill-v1").
-  // Malformed values are silently dropped server-side — they never break
-  // the create call.
-  client,
-  // Sprint 2.5: optional resolution policy attached at create time. The
-  // server re-validates via parseResolutionPolicy — malformed policies
-  // reject with a 400. Pass-through; no client-side shape coercion.
-  resolutionPolicy,
-  fetchImpl = fetch,
-}) {
-  assertUrlArray(urls);
-
-  const endpoint = new URL("/api/links", baseUrl).toString();
-  const headers = buildHeaders(client);
-
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers,
-    // This payload shape matches the server route contract.
-    body: JSON.stringify({
-      urls,
-      source,
-      metadata,
-      email,
-      title,
-      description,
-      urlMetadata,
-      resolutionPolicy,
-    }),
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    const message =
-      typeof data.error === "string"
-        ? data.error
-        : `Linky request failed with status ${response.status}.`;
-    throw new Error(message);
-  }
 
   if (typeof data.slug !== "string" || typeof data.url !== "string") {
     throw new Error("Linky API returned an invalid response payload.");
   }
 
-  // claim* fields are only returned for anonymous creates. claimToken is
-  // the raw secret; claimUrl is a convenience URL that wraps it. The
-  // `warning` string is a verbatim message the caller can surface to the
-  // end user to explain one-time-only semantics.
+  // Pre-2.8 callers rely on this exact return shape. Keep field-for-field
+  // parity — do not add fields without a SemVer bump.
   return {
     slug: data.slug,
     url: data.url,
@@ -131,8 +74,6 @@ async function createLinky({
     claimExpiresAt:
       typeof data.claimExpiresAt === "string" ? data.claimExpiresAt : undefined,
     warning: typeof data.warning === "string" ? data.warning : undefined,
-    // Server echoes the parsed policy (with minted rule ids) iff one was
-    // attached. Caller can persist it to reason about rule ids later.
     resolutionPolicy:
       data.resolutionPolicy && typeof data.resolutionPolicy === "object"
         ? data.resolutionPolicy
@@ -140,56 +81,35 @@ async function createLinky({
   };
 }
 
-async function updateLinky({
-  slug,
-  baseUrl = DEFAULT_BASE_URL,
-  title,
-  description,
-  urls,
-  urlMetadata,
-  resolutionPolicy,
-  client,
-  apiKey,
-  fetchImpl = fetch,
-}) {
+async function updateLinky(options = {}) {
+  const {
+    slug,
+    baseUrl,
+    title,
+    description,
+    urls,
+    urlMetadata,
+    resolutionPolicy,
+    client,
+    apiKey,
+    fetchImpl,
+  } = options;
+
   if (typeof slug !== "string" || slug.trim().length === 0) {
     throw new Error("`slug` must be a non-empty string.");
   }
 
-  assertPatchPayload({
-    urls,
+  const instance = buildClient({ baseUrl, apiKey, client, fetchImpl });
+
+  const data = await instance.updateLinky(slug, {
     title,
     description,
+    urls,
     urlMetadata,
     resolutionPolicy,
   });
 
-  const endpoint = new URL(`/api/links/${slug}`, baseUrl).toString();
-  const headers = buildHeaders(client, apiKey);
-
-  const response = await fetchImpl(endpoint, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify({
-      title,
-      description,
-      urls,
-      urlMetadata,
-      resolutionPolicy,
-    }),
-  });
-
-  const data = await parseJsonResponse(response);
-
-  if (!response.ok) {
-    const message =
-      typeof data.error === "string"
-        ? data.error
-        : `Linky request failed with status ${response.status}.`;
-    throw new Error(message);
-  }
-
-  const linky = data.linky;
+  const linky = data && typeof data === "object" ? data.linky : null;
   if (!linky || typeof linky !== "object" || typeof linky.slug !== "string") {
     throw new Error("Linky API returned an invalid response payload.");
   }
@@ -207,10 +127,8 @@ async function updateLinky({
         typeof linky.description === "string" || linky.description === null
           ? linky.description
           : null,
-      createdAt:
-        typeof linky.createdAt === "string" ? linky.createdAt : "",
-      updatedAt:
-        typeof linky.updatedAt === "string" ? linky.updatedAt : "",
+      createdAt: typeof linky.createdAt === "string" ? linky.createdAt : "",
+      updatedAt: typeof linky.updatedAt === "string" ? linky.updatedAt : "",
       source: typeof linky.source === "string" ? linky.source : "unknown",
       resolutionPolicy:
         linky.resolutionPolicy && typeof linky.resolutionPolicy === "object"
@@ -222,6 +140,8 @@ async function updateLinky({
 
 module.exports = {
   DEFAULT_BASE_URL,
+  LinkyClient,
+  LinkyApiError,
   createLinky,
   updateLinky,
 };

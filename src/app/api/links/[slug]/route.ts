@@ -2,21 +2,15 @@ import type { NextRequest } from "next/server";
 
 import { LinkyError, isLinkyError } from "@/lib/linky/errors";
 import { parsePatchLinkyPayload } from "@/lib/linky/schemas";
-import type { LinkyRecord } from "@/lib/linky/types";
 import {
   AuthRequiredError,
   ForbiddenError,
   requireAuthSubject,
-  requireCanAdminLinky,
-  requireCanEditLinky,
-  requireScope,
-  roleOfSubject,
 } from "@/lib/server/auth";
 import {
-  getLinkyRecordBySlug,
-  patchLinkyRecord,
-  softDeleteLinkyRecord,
-} from "@/lib/server/linkies-repository";
+  deleteLinky,
+  updateLinky,
+} from "@/lib/server/services/linkies-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -57,67 +51,13 @@ function toErrorResponse(error: KnownError): Response {
   );
 }
 
-function toRecordDto(record: LinkyRecord) {
-  return {
-    slug: record.slug,
-    urls: record.urls,
-    urlMetadata: record.urlMetadata,
-    title: record.title,
-    description: record.description,
-    owner: record.owner,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-    source: record.source,
-    metadata: record.metadata,
-    // Sprint 2: the DTO includes the full policy so the dashboard editor
-    // can round-trip without a second read. Safe because PATCH is owner-only
-    // (ownership is enforced by `requireCanEditLinky` above). The public
-    // `/l/[slug]` launcher never ships the policy to the client — it only
-    // forwards the resolved tab set.
-    resolutionPolicy: record.resolutionPolicy,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// PATCH: owner-only edit. Anonymous Linkies reject with 403.
-// ---------------------------------------------------------------------------
-
 export async function PATCH(
   request: NextRequest,
   context: RouteContext,
 ): Promise<Response> {
   try {
     const { slug } = await context.params;
-
     const subject = await requireAuthSubject(request);
-
-    // Sprint 2.7 Chunk D: bearer keys need `links:write`. Session subjects
-    // pass trivially (scopes: undefined). Placed before the DB read so a
-    // read-only key burning a key_prefix lookup is cheaper to reject.
-    requireScope(subject, "links:write");
-
-    const existing = await getLinkyRecordBySlug(slug);
-    if (!existing) {
-      return Response.json(
-        { error: "Linky not found.", code: "NOT_FOUND" },
-        { status: 404 },
-      );
-    }
-
-    // Owner check lives at the repository boundary so any future caller
-    // (CLI, SDK, dashboard) hits the same guard. Role is derived from the
-    // subject's active Clerk org role (Sprint 2.7 Chunk C); editors and
-    // admins can patch, viewers cannot.
-    requireCanEditLinky(
-      subject,
-      {
-        ownerUserId:
-          existing.owner.type === "user" ? existing.owner.userId : null,
-        ownerOrgId:
-          existing.owner.type === "org" ? existing.owner.orgId : null,
-      },
-      roleOfSubject(subject),
-    );
 
     let rawPayload: unknown;
     try {
@@ -130,30 +70,11 @@ export async function PATCH(
     }
 
     const patch = parsePatchLinkyPayload(rawPayload);
+    const dto = await updateLinky({ ...patch, slug }, subject);
 
-    const updated = await patchLinkyRecord({
-      slug,
-      patch,
-      // API-key-authenticated org subjects may not carry a human user id. We
-      // preserve the append-only history row anyway and leave the editor field
-      // null rather than inventing a Clerk identity.
-      editedByClerkUserId: subject.type === "user" ? subject.userId : subject.userId,
-    });
-
-    if (!updated) {
-      // Row disappeared between read and patch; rare but possible if a
-      // parallel DELETE landed first. Return 404 to reflect reality.
-      return Response.json(
-        { error: "Linky not found.", code: "NOT_FOUND" },
-        { status: 404 },
-      );
-    }
-
-    return Response.json({ linky: toRecordDto(updated) });
+    return Response.json({ linky: dto });
   } catch (error) {
-    if (isKnownError(error)) {
-      return toErrorResponse(error);
-    }
+    if (isKnownError(error)) return toErrorResponse(error);
     return toErrorResponse(
       new LinkyError("Unexpected server error while updating Linky.", {
         code: "INTERNAL_ERROR",
@@ -163,56 +84,19 @@ export async function PATCH(
   }
 }
 
-// ---------------------------------------------------------------------------
-// DELETE: owner-only soft delete. Public resolver responds 410 afterwards.
-// ---------------------------------------------------------------------------
-
 export async function DELETE(
   request: NextRequest,
   context: RouteContext,
 ): Promise<Response> {
   try {
     const { slug } = await context.params;
-
     const subject = await requireAuthSubject(request);
 
-    // Sprint 2.7 Chunk D: bearer keys need `links:write` to even try a
-    // delete. The admin role check below is the stricter gate; we run
-    // both because `links:write` keys that belong to an editor-role
-    // subject must still 403, and the scope message is the more actionable
-    // error (the caller can mint a higher-scope key).
-    requireScope(subject, "links:write");
+    await deleteLinky({ slug }, subject);
 
-    const existing = await getLinkyRecordBySlug(slug);
-    if (!existing) {
-      return Response.json(
-        { error: "Linky not found.", code: "NOT_FOUND" },
-        { status: 404 },
-      );
-    }
-
-    // Sprint 2.7 Chunk C tightening: DELETE is now admin-only on org-owned
-    // Linkies. Editors cannot nuke a team bundle unilaterally — the
-    // supported path is "promote the caller to org:admin in Clerk" or
-    // "ask an admin." Deletes are soft and show up in version history,
-    // so the tightening does not block real recovery needs.
-    requireCanAdminLinky(
-      subject,
-      {
-        ownerUserId:
-          existing.owner.type === "user" ? existing.owner.userId : null,
-        ownerOrgId:
-          existing.owner.type === "org" ? existing.owner.orgId : null,
-      },
-      roleOfSubject(subject),
-    );
-
-    await softDeleteLinkyRecord(slug);
     return Response.json({ ok: true });
   } catch (error) {
-    if (isKnownError(error)) {
-      return toErrorResponse(error);
-    }
+    if (isKnownError(error)) return toErrorResponse(error);
     return toErrorResponse(
       new LinkyError("Unexpected server error while deleting Linky.", {
         code: "INTERNAL_ERROR",

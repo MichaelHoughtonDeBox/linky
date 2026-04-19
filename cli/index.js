@@ -541,6 +541,10 @@ function printUpdateSummary(result) {
 }
 
 async function loadSdkExports() {
+  // The top-level entry is CJS; dynamic import surfaces it under `default`
+  // in Node's ESM/CJS interop. Sprint 2.8 Chunk 0 widened the exports —
+  // callers that want the full client should pull `LinkyClient` out of
+  // this object directly.
   const sdkModule = await import("../index.js");
   return sdkModule.default ?? sdkModule;
 }
@@ -657,21 +661,13 @@ async function handleAuth(argv) {
 
   if (parsed.command === "whoami") {
     const apiKey = await resolveApiKey(parsed.apiKey);
-    const endpoint = new URL("/api/me/keys", parsed.baseUrl).toString();
-    const response = await fetch(endpoint, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-      },
+    const sdk = await loadSdkExports();
+    const client = new sdk.LinkyClient({
+      baseUrl: parsed.baseUrl,
+      apiKey,
+      client: parsed.client,
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message =
-        typeof data.error === "string"
-          ? data.error
-          : `Linky request failed with status ${response.status}.`;
-      throw new Error(message);
-    }
+    const data = await client.whoami();
 
     if (parsed.json) {
       console.log(JSON.stringify(data));
