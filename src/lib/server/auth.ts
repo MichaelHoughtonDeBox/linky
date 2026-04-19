@@ -139,6 +139,38 @@ export async function requireAuthSubject(
 }
 
 /**
+ * Sprint 2.8 Chunk A: bearer-only authentication for the MCP endpoint.
+ *
+ * The MCP surface is agent-facing: every caller authenticates with a
+ * `lkyu_*` / `lkyo_*` API key sent as `Authorization: Bearer …`. There
+ * is no Clerk-session fallback — agents never carry cookies, and letting
+ * a logged-in browser accidentally drive the MCP endpoint would blur the
+ * scope/role story Sprint 2.7 Chunk D just tightened. So this helper
+ * intentionally does NOT call into Clerk; it parses the header and
+ * resolves the subject against `api_keys` only.
+ *
+ * Missing / malformed / revoked / unknown tokens all throw the same
+ * `AuthRequiredError` so the caller cannot distinguish them. Scope and
+ * role enforcement still happens inside each service function — this
+ * helper only proves the caller is authenticated.
+ */
+export async function authenticateBearerToken(
+  request: Request,
+): Promise<AuthenticatedSubject> {
+  const token = parseBearerToken(request);
+  if (!token) {
+    throw new AuthRequiredError("Bearer API key required.");
+  }
+
+  const subject = await authenticateApiKey(token);
+  if (!subject) {
+    throw new AuthRequiredError("Invalid API key.");
+  }
+
+  return subject;
+}
+
+/**
  * Resolve the signed-in Clerk user id from the browser session only.
  *
  * Claim consumption is intentionally human-mediated: API keys may edit owned

@@ -79,6 +79,16 @@ export default clerkMiddleware(async (auth, req) => {
     if (hasBearerToken) return;
     await auth.protect();
   }
+
+  // Sprint 2.8 Chunk A: `/api/mcp` is the agent-facing MCP Streamable-HTTP
+  // endpoint. It is bearer-only (no Clerk-session fallback) and does its
+  // own auth inside `authenticateBearerToken`. We intentionally bypass the
+  // proxy's `auth.protect()` so the endpoint can return MCP-shaped error
+  // envelopes (code -32001) instead of a Clerk 401 HTML page, and so
+  // agent harnesses without cookie jars are never rerouted through Clerk.
+  if (req.nextUrl.pathname === "/api/mcp") {
+    return;
+  }
 });
 
 export const config = {

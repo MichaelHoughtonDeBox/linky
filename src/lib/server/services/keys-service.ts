@@ -118,12 +118,35 @@ export async function whoAmI(
   // Whoami shares the list endpoint today: `GET /api/me/keys` returns the
   // caller's keys when they have `keys:admin`, and functions as the auth
   // identity probe the CLI uses to validate a bearer token. We keep the
-  // alias because the MCP tool surface (Chunk A) will expose `whoami`
-  // separately — callers with only `links:read` need SOME way to verify
-  // "who am I" without promoting to `keys:admin`, so Chunk A's whoami
-  // tool will diverge from `listKeys`. For Chunk 0 we preserve today's
-  // behavior byte-for-byte.
+  // alias because the MCP tool surface (Chunk A) exposes `whoami`
+  // separately via `whoAmIIdentity` — callers with only `links:read` need
+  // SOME way to verify "who am I" without promoting to `keys:admin`.
   return listKeys(subject);
+}
+
+// Sprint 2.8 Chunk A: lightweight identity probe for the MCP `whoami`
+// tool. No scope check — any authed bearer subject can ask "who am I?"
+// without needing `keys:admin`. Returns JUST the subject descriptor
+// (type, userId or orgId, effective role, attached scopes); never the
+// key list. That means a `links:read` agent holder can verify their
+// token works without accidentally seeing every key in the account.
+export type WhoAmIIdentityResponse = {
+  subject: SubjectDto;
+  role: ReturnType<typeof roleOfSubject>;
+  scopes: ApiKeyPermission[];
+};
+
+export function whoAmIIdentity(
+  subject: AuthenticatedSubject,
+): WhoAmIIdentityResponse {
+  return {
+    subject: subjectDto(subject),
+    role: roleOfSubject(subject),
+    // Bearer subjects always carry `scopes`; the empty-array fallback is
+    // defensive only (a session subject routed into this path would have
+    // `scopes: undefined` and we surface that as `[]` for shape stability).
+    scopes: subject.scopes ?? [],
+  };
 }
 
 export async function createKey(
