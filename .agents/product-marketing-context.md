@@ -485,6 +485,9 @@ Shipped:
 - Accounts + editable launch bundles + per-URL metadata (Sprint 1).
 - Identity-aware URL resolution — same Linky, different tabs per viewer (Sprint 2).
 - Policy at create time via CLI / SDK / API (Sprint 2.5) — "born personalized" path.
+- Bearer API keys + `linky update <slug>` CLI command (Sprint 2.6). Agents
+  authenticate as a personal or org subject via `Authorization: Bearer`,
+  no browser session needed. Post-create policy editing from the terminal.
 - Analytics + access control (Sprint 2.7). Three derived team roles
   (admin / editor / viewer), owner-side launcher analytics, scoped API
   keys (`links:read` / `links:write` / `keys:admin`). Trust posture
@@ -492,8 +495,10 @@ Shipped:
   `/docs/access-control` for the public-facing role model.
 
 Upcoming:
-- `linky update <slug>` CLI command — post-create policy editing from the terminal (Sprint 2.6).
-- First-class MCP server + "linky session" convention — publish the spec so other frameworks can adopt.
+- First-class MCP server — one Streamable-HTTP endpoint inside the Next.js
+  app, exposing every authed route as an MCP tool. BYO-bearer-token config
+  so the same `mcp.json` shape works across Claude Desktop, Cursor, Codex,
+  Continue, Cline. Self-host path is identical — swap the URL.
 - Cursor / Claude / ChatGPT-native skills — emit a Linky at the end of every task.
 - Browser extension — tab-group capture and restore.
 
