@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 const DEFAULT_BASE_URL =
   process.env.LINKY_BASE_URL ||
@@ -29,9 +30,18 @@ Usage:
   linky create <url1> <url2> [url3] ... [options]
   linky <url1> <url2> [url3] ... [options]
   linky update <slug> [options]
+  linky list [--json] [--limit N] [--offset N]
+  linky get <slug> [--json]
+  linky history <slug> [--json]
+  linky insights <slug> [--range 7d|30d|90d] [--json]
+  linky delete <slug> --force
   linky auth set-key <apiKey>
   linky auth clear
   linky auth whoami [options]
+  linky auth keys list [--json]
+  linky auth keys create <name> [--scopes links:read,links:write]
+                              [--rate-limit N] [--json]
+  linky auth keys revoke <id>
   linky mcp                             Start the stdio MCP bridge
                                         (point agent configs at this)
 
@@ -66,8 +76,13 @@ Auth precedence:
 Examples:
   linky create https://docs.acme.com --policy ./acme-team.policy.json
   linky update abc123 --title "Release bundle v2" --policy ./policy.json
+  linky list --json | jq '.linkies[0]'
+  linky insights abc123 --range 30d
+  linky delete abc123 --force
   linky auth set-key lkyu_deadbeef.secret
   linky auth whoami --json
+  linky auth keys create "ci bot" --scopes links:read --rate-limit 500
+  linky auth keys list --json
 `);
 }
 
@@ -551,6 +566,18 @@ async function loadSdkExports() {
   return sdkModule.default ?? sdkModule;
 }
 
+// Sprint 2.8 Chunk C: when `handleAuth` routes into the `keys` subcommand
+// group it resolves the bearer token via the shared precedence chain BEFORE
+// handing off to `cli/keys.js`. That way a user with `linky auth set-key`
+// stored can run `linky auth keys list` without passing --api-key. We still
+// respect an explicit --api-key flag on the argv so automation can override.
+function extractApiKeyOverride(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === "--api-key") return argv[index + 1];
+  }
+  return undefined;
+}
+
 async function handleCreate(argv) {
   const parsed = parseCreateArgs(argv);
   if (parsed.showHelp) {
@@ -667,6 +694,28 @@ async function handleMcp(argv) {
 }
 
 async function handleAuth(argv) {
+  // Sprint 2.8 Chunk C: `linky auth keys {list,create,revoke}` is a new
+  // subcommand group. Route it early so the legacy set-key / clear /
+  // whoami parser doesn't try to handle `keys` as an unknown auth verb.
+  if (argv[1] === "keys") {
+    const keysArgv = argv.slice(2);
+    const sub = keysArgv.shift();
+    const sdk = await loadSdkExports();
+    const keysModule = require("./keys.js");
+    const apiKey = await resolveApiKey(extractApiKeyOverride(keysArgv));
+    // The `resolveApiKey` precedence is preserved: `--api-key` wins,
+    // then `LINKY_API_KEY`, then stored config. We thread the resolved
+    // value back into argv so the per-subcommand parser picks it up.
+    const effectiveArgv = ["--api-key", apiKey, ...keysArgv];
+
+    if (sub === "list") return keysModule.runList(effectiveArgv, sdk);
+    if (sub === "create") return keysModule.runCreate(effectiveArgv, sdk);
+    if (sub === "revoke") return keysModule.runRevoke(effectiveArgv, sdk);
+    throw new Error(
+      `Unknown auth keys subcommand: ${sub ?? ""}. Try list / create / revoke.`,
+    );
+  }
+
   const parsed = parseAuthArgs(argv);
   if (parsed.showHelp) {
     printRootHelp();
@@ -739,6 +788,31 @@ async function main() {
 
     if (first === "mcp") {
       await handleMcp(argv);
+      return;
+    }
+
+    // Sprint 2.8 Chunk C: new read + destructive commands. All route
+    // through `cli/linkies.js` via LinkyClient; auth is the shared
+    // precedence chain (--api-key → LINKY_API_KEY → stored config).
+    // We resolve the key BEFORE delegation so the per-command parser
+    // only has to handle the flags its command actually understands.
+    if (
+      first === "list" ||
+      first === "get" ||
+      first === "history" ||
+      first === "insights" ||
+      first === "delete"
+    ) {
+      const commandArgv = argv.slice(1);
+      const sdk = await loadSdkExports();
+      const linkies = require("./linkies.js");
+      const apiKey = await resolveApiKey(extractApiKeyOverride(commandArgv));
+      const effectiveArgv = ["--api-key", apiKey, ...commandArgv];
+      if (first === "list") await linkies.runList(effectiveArgv, sdk);
+      else if (first === "get") await linkies.runGet(effectiveArgv, sdk);
+      else if (first === "history") await linkies.runHistory(effectiveArgv, sdk);
+      else if (first === "insights") await linkies.runInsights(effectiveArgv, sdk);
+      else if (first === "delete") await linkies.runDelete(effectiveArgv, sdk);
       return;
     }
 

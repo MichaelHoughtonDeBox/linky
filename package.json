@@ -17,7 +17,10 @@
   },
   "files": [
     "cli/index.js",
+    "cli/keys.js",
+    "cli/linkies.js",
     "cli/mcp.mjs",
+    "cli/sparkline.js",
     "sdk/client.js",
     "sdk/client.d.ts",
     "sdk/index.js",
