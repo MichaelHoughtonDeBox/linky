@@ -493,13 +493,23 @@ Shipped:
   keys (`links:read` / `links:write` / `keys:admin`). Trust posture
   preserved: no viewer tracking, no destination-tab pings. See
   `/docs/access-control` for the public-facing role model.
+- **Agents use Linky natively** (Sprint 2.8). First-class MCP server at
+  `/api/mcp` (Streamable-HTTP) + bundled `linky mcp` stdio bridge for
+  harnesses that don't speak Streamable-HTTP. All 11 authed routes are
+  exposed as MCP tools (`linky_create`, `linky_list`, `linky_get`,
+  `linky_update`, `linky_delete`, `linky_versions`, `linky_insights`,
+  `whoami`, `keys_list`, `keys_create`, `keys_revoke`). Per-key hourly
+  rate limits (`rate_limit_per_hour`, default 1000/hr) cap runaway
+  agents without touching legitimate workflows. CLI widened to 11-to-11
+  parity with the MCP surface. Public walkthrough at `/docs/mcp` with
+  copy-paste snippets for Cursor, Claude Desktop, Codex, Continue,
+  Cline. Copy rule stays agent-framed ("your agent can create Linkies",
+  never "we support the MCP spec").
 
 Upcoming:
-- First-class MCP server — one Streamable-HTTP endpoint inside the Next.js
-  app, exposing every authed route as an MCP tool. BYO-bearer-token config
-  so the same `mcp.json` shape works across Claude Desktop, Cursor, Codex,
-  Continue, Cline. Self-host path is identical — swap the URL.
-- Cursor / Claude / ChatGPT-native skills — emit a Linky at the end of every task.
+- Cursor / Claude / ChatGPT-native skills — emit a Linky at the end of
+  every task. *MCP (Sprint 2.8) ships the underlying primitive; skill
+  packaging per harness is the marketing follow-up.*
 - Browser extension — tab-group capture and restore.
 
 ---

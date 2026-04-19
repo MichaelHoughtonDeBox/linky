@@ -293,6 +293,51 @@ curl -X POST "https://getalinky.com/api/links" \
   }'
 ```
 
+## Agent integration (MCP)
+
+Your agent — Cursor, Claude Desktop, Codex CLI, Continue, Cline, or any
+other Streamable-HTTP MCP client — can call every authed Linky route
+natively. Paste one snippet, mint a scoped key, and the agent sees all
+11 tools. Full walkthrough at [`/docs/mcp`](https://getalinky.com/docs/mcp).
+
+**Cursor** (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "linky": {
+      "url": "https://getalinky.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer lkyu_YOUR_PREFIX.YOUR_SECRET"
+      }
+    }
+  }
+}
+```
+
+**Claude Desktop** / **Codex CLI** / any stdio-only harness — use the
+bundled bridge:
+
+```json
+{
+  "mcpServers": {
+    "linky": {
+      "command": "npx",
+      "args": ["-y", "@linky/linky", "mcp"],
+      "env": {
+        "LINKY_API_KEY": "lkyu_YOUR_PREFIX.YOUR_SECRET",
+        "LINKY_BASE_URL": "https://getalinky.com"
+      }
+    }
+  }
+}
+```
+
+Mint a key at [`/dashboard/api-keys`](https://getalinky.com/dashboard/api-keys).
+`links:read` is safe to drop into any agent context — it can list, read,
+and view insights, but can't write. Every key has its own hourly
+rate-limit bucket (default 1000/hr; `0` = unlimited).
+
 ## Skill Install (for model workflows)
 
 ```bash
@@ -688,8 +733,8 @@ several of these are different by design.
 - [x] **Policy at create time via CLI / SDK / API** (`--policy` flag, `createLinky({ resolutionPolicy })`, `POST /api/links` accepts `resolutionPolicy`) — Sprint 2.5.
 - [x] **Bearer API keys + `linky update <slug>` CLI command** — post-create policy editing from the terminal, plus `api_keys` with per-subject bearer auth so the CLI/SDK can authenticate as a personal or org subject without a browser session. Sprint 2.6 (anchor `72479aa`). The scope story (`links:read` / `links:write` / `keys:admin`) landed in Sprint 2.7.
 - [x] **Analytics + access control** — team plan foundation. Sprint 2.7. Launcher-event instrumentation (owner-only, no viewer tracking), role-aware ownership (`viewer` / `editor` / `admin` derived from `memberships.role`), scoped API keys (`links:read` / `links:write` / `keys:admin`), and the read-only team page. See [`/docs/access-control`](./src/app/docs/access-control/page.tsx) or the live page at `/docs/access-control`.
-- [ ] **First-class MCP server + "linky session" convention** — other frameworks can adopt; publish the spec.
-- [ ] **Cursor / Claude / ChatGPT-native skills** — emit a Linky at the end of every task.
+- [x] **First-class MCP server + shared service layer + per-key rate limits** — Sprint 2.8. Every authed route extracted into a named service function (`src/lib/server/services/*`), then exposed as a Streamable-HTTP MCP endpoint at `/api/mcp` with all 11 tools (`linky_create` / `linky_list` / `linky_get` / `linky_update` / `linky_delete` / `linky_versions` / `linky_insights` / `whoami` / `keys_list` / `keys_create` / `keys_revoke`). `linky mcp` stdio bridge for harnesses that don't speak Streamable-HTTP. Per-key hourly rate limits (`api_keys.rate_limit_per_hour`, default 1000/hr, 0 = unlimited). CLI widened to 11-to-11 command parity with the MCP surface. See [`/docs/mcp`](./src/app/docs/mcp/page.tsx) or the live page at `/docs/mcp`.
+- [ ] **Cursor / Claude / ChatGPT-native skills** — emit a Linky at the end of every task. *(MCP ships the underlying primitive in 2.8; first-party skill packaging is the marketing follow-up.)*
 - [ ] **Browser extension** — tab-group capture and restore.
 
 ## Development Commands

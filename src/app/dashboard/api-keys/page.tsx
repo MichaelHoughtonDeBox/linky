@@ -58,8 +58,16 @@ export default async function DashboardApiKeysPage() {
           <p className="terminal-muted mt-2 max-w-2xl text-sm sm:text-base">
             Create a machine credential for the active{" "}
             {subject.type === "org" ? "team workspace" : "personal account"}.
-            Use it with the CLI, SDK, or future MCP integrations. Raw keys are
+            Use it with the CLI, SDK, or an MCP-enabled agent. Raw keys are
             shown once and cannot be recovered later.
+          </p>
+          <p className="terminal-muted mt-2 max-w-2xl text-sm sm:text-base">
+            Using this key with an agent harness? See{" "}
+            <Link href="/docs/mcp" className="underline">
+              /docs/mcp
+            </Link>{" "}
+            for copy-paste snippets for Cursor, Claude Desktop, Codex,
+            Continue, and Cline.
           </p>
         </div>
         <Link

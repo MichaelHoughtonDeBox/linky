@@ -39,6 +39,10 @@ export const DOCS_NAV: DocsNavGroup[] = [
     ],
   },
   {
+    label: "Agents",
+    links: [{ href: "/docs/mcp", label: "MCP" }],
+  },
+  {
     label: "Reference",
     links: [
       { href: "/docs/api", label: "API" },
