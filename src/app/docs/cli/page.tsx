@@ -47,14 +47,146 @@ export default function DocsCliPage() {
           <code>{`linky create <url1> <url2> [url3] ... [options]
 linky <url1> <url2> [url3] ... [options]
 linky update <slug> [options]
+linky list [--json] [--limit N] [--offset N]
+linky get <slug> [--json]
+linky history <slug> [--json]
+linky insights <slug> [--range 7d|30d|90d] [--json]
+linky delete <slug> --force
 linky auth set-key <apiKey>
 linky auth clear
-linky auth whoami [options]`}</code>
+linky auth whoami [options]
+linky auth keys list [--json]
+linky auth keys create <name> [--scopes links:read,links:write] [--rate-limit N]
+linky auth keys revoke <id>
+linky mcp`}</code>
         </pre>
         <p>
           The <code>create</code> subcommand is optional — any positional
           arguments that look like URLs are treated as a create call.
         </p>
+        <p>
+          Every authed read command supports <code>--json</code> so agents
+          scripting the CLI directly get structured DTOs instead of the
+          human-readable view. The wire shape matches the{" "}
+          <Link href="/docs/api">HTTP API</Link>.
+        </p>
+      </section>
+
+      <section className="docs-section">
+        <p className="terminal-label">Read commands (Sprint 2.8)</p>
+        <div className="docs-table-wrap">
+          <table className="docs-table">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Purpose</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <code>linky list</code>
+                </td>
+                <td>List your Linky bundles, newest-updated first.</td>
+                <td>
+                  Org-context keys see org-owned bundles; user keys see
+                  personal ones. <code>--limit</code> defaults to 20 (max 100);{" "}
+                  <code>--offset</code> paginates.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>linky get &lt;slug&gt;</code>
+                </td>
+                <td>Show a single Linky in full detail.</td>
+                <td>
+                  Returns URLs, metadata, owner, and any attached
+                  resolution policy.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>linky history &lt;slug&gt;</code>
+                </td>
+                <td>Show the append-only edit history.</td>
+                <td>
+                  Every PATCH appends a version. Newest-first;
+                  <code>--json</code> dumps the full DTO array.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>linky insights &lt;slug&gt;</code>
+                </td>
+                <td>
+                  Render totals, per-rule breakdown, and a daily
+                  sparkline.
+                </td>
+                <td>
+                  Sparkline is TTY-only;<code>--json</code> prints the
+                  full DTO. Range defaults to 30d.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>linky delete &lt;slug&gt; --force</code>
+                </td>
+                <td>Soft-delete a Linky.</td>
+                <td>
+                  Requires <code>--force</code> as a typo-guard; no-op
+                  without it. Requires admin role on org-owned bundles.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="docs-section">
+        <p className="terminal-label">Key management (Sprint 2.8)</p>
+        <div className="docs-table-wrap">
+          <table className="docs-table">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Purpose</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <code>linky auth keys list</code>
+                </td>
+                <td>Show active + revoked API keys for the active subject.</td>
+                <td>
+                  Requires <code>keys:admin</code>. Prefix shown; secrets never
+                  are.
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>linky auth keys create &lt;name&gt;</code>
+                </td>
+                <td>Mint a new API key. Secret printed ONCE.</td>
+                <td>
+                  <code>--scopes links:read,links:write,keys:admin</code>{" "}
+                  (comma-separated);{" "}
+                  <code>--rate-limit N</code> (per-hour quota, 0 = unlimited,
+                  default 1000, max 100000).
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <code>linky auth keys revoke &lt;id&gt;</code>
+                </td>
+                <td>Revoke an active key by numeric id.</td>
+                <td>Idempotent.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="docs-section">
