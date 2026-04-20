@@ -48,7 +48,7 @@ const SNIPPET_CLAUDE = `{
   "mcpServers": {
     "linky": {
       "command": "npx",
-      "args": ["-y", "@linky/linky", "mcp"],
+      "args": ["-y", "getalinky", "mcp"],
       "env": {
         "LINKY_API_KEY": "lkyu_YOUR_PREFIX.YOUR_SECRET",
         "LINKY_BASE_URL": "https://getalinky.com"
@@ -59,7 +59,7 @@ const SNIPPET_CLAUDE = `{
 
 const SNIPPET_CODEX = `[mcp_servers.linky]
 command = "npx"
-args = ["-y", "@linky/linky", "mcp"]
+args = ["-y", "getalinky", "mcp"]
 
 [mcp_servers.linky.env]
 LINKY_API_KEY = "lkyu_YOUR_PREFIX.YOUR_SECRET"
@@ -117,7 +117,7 @@ const HARNESSES: HarnessTab[] = [
     configPath: "~/Library/Application Support/Claude/claude_desktop_config.json",
     snippet: SNIPPET_CLAUDE,
     format: "JSON",
-    note: "Claude Desktop uses the stdio bridge shipped in @linky/linky.",
+    note: "Claude Desktop uses the stdio bridge shipped in getalinky.",
   },
   {
     id: "codex",

@@ -1,4 +1,4 @@
-// Top-level @linky/linky entry.
+// Top-level `getalinky` package entry.
 //
 // Historically this file hand-rolled the HTTP calls. As of Sprint 2.8
 // Chunk 0 we delegate to `LinkyClient` under `sdk/client.js` so the

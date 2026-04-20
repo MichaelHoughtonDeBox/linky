@@ -1,6 +1,6 @@
 ---
 name: linky
-description: Create, update, read, and manage Linky short launch URLs — bundles of multiple URLs behind one shareable link — from any agent harness. Use when bundling multiple URLs into one short link, packaging a session hand-off, personalizing per-viewer tab sets, reading launcher analytics, or minting scoped API keys. Four usage paths: MCP (recommended for Cursor / Claude Desktop / Codex / Continue / Cline), CLI (`linky`), SDK (`@linky/linky`), and raw HTTP. All four share one service layer and behave identically.
+description: Create, update, read, and manage Linky short launch URLs — bundles of multiple URLs behind one shareable link — from any agent harness. Use when bundling multiple URLs into one short link, packaging a session hand-off, personalizing per-viewer tab sets, reading launcher analytics, or minting scoped API keys. Four usage paths: MCP (recommended for Cursor / Claude Desktop / Codex / Continue / Cline), CLI (`linky`), SDK (`getalinky`), and raw HTTP. All four share one service layer and behave identically.
 ---
 
 # Linky
@@ -14,8 +14,8 @@ the same service layer, so pick whichever transport fits the task.
 | Situation | Use |
 |---|---|
 | You're in Cursor / Claude Desktop / Codex / Continue / Cline and the user has pasted the Linky `mcp.json` | **MCP tools** (`linky_create`, `linky_get`, `linky_insights`, …) |
-| Shell script, CI job, ad-hoc terminal session | **CLI** (`linky` command after `npm i -g @linky/linky`, or `node cli/index.js` in-repo) |
-| Node.js program you're authoring | **SDK** (`import { LinkyClient } from "@linky/linky/sdk"`) |
+| Shell script, CI job, ad-hoc terminal session | **CLI** (`linky` command after `npm i -g getalinky`, or `node cli/index.js` in-repo) |
+| Node.js program you're authoring | **SDK** (`import { LinkyClient } from "getalinky/sdk"`) |
 | Non-Node runtime, raw documentation, debugging the wire protocol | **curl** against `POST /api/links` etc. |
 
 **Default to MCP when you have it.** It's the lowest-friction path for an
@@ -98,7 +98,7 @@ bundled bridge:
   "mcpServers": {
     "linky": {
       "command": "npx",
-      "args": ["-y", "@linky/linky", "mcp"],
+      "args": ["-y", "getalinky", "mcp"],
       "env": {
         "LINKY_API_KEY": "lkyu_<PREFIX>.<SECRET>",
         "LINKY_BASE_URL": "https://getalinky.com"
@@ -151,7 +151,7 @@ bundled bridge:
 Install globally or run in-repo:
 
 ```bash
-npm i -g @linky/linky        # produces the `linky` command
+npm i -g getalinky        # produces the `linky` command
 # or, inside the repo checkout:
 node cli/index.js <subcommand> [...]
 ```
@@ -207,7 +207,7 @@ CLI env defaults: `LINKY_BASE_URL` (falls back to `https://getalinky.com`),
 ## SDK — Node.js surface
 
 ```js
-import { LinkyClient, LinkyApiError } from "@linky/linky/sdk";
+import { LinkyClient, LinkyApiError } from "getalinky/sdk";
 
 const linky = new LinkyClient({
   apiKey: process.env.LINKY_API_KEY,   // default
@@ -230,7 +230,7 @@ Full class surface: `createLinky`, `getLinky`, `listLinkies`, `updateLinky`,
 `statusCode`, `details`, and `retryAfterSeconds` (on 429).
 
 Convenience wrappers remain: `import { createLinky, updateLinky } from
-"@linky/linky"` — zero-config one-shots.
+"getalinky"` — zero-config one-shots.
 
 ## HTTP — raw wire protocol
 

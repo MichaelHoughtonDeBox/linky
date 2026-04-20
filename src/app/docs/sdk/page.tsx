@@ -58,7 +58,7 @@ export type UpdateLinkyResult = {
   updatedAt?: string;
 };`;
 
-const CLIENT_SIGNATURE = `import { LinkyClient, LinkyApiError } from "@linky/linky/sdk";
+const CLIENT_SIGNATURE = `import { LinkyClient, LinkyApiError } from "getalinky/sdk";
 
 export class LinkyClient {
   constructor(options?: {
@@ -84,7 +84,7 @@ export class LinkyClient {
   revokeKey(id):            Promise<RevokedKeyResponseDto>;
 }`;
 
-const CLIENT_BASIC = `import { LinkyClient } from "@linky/linky/sdk";
+const CLIENT_BASIC = `import { LinkyClient } from "getalinky/sdk";
 
 const linky = new LinkyClient({
   apiKey: process.env.LINKY_API_KEY,
@@ -113,7 +113,7 @@ console.log(insights.totals);  // { views, uniqueViewerDays, openAllClicks, open
 // Delete (admin role on org-owned Linkies)
 await linky.deleteLinky(slug);`;
 
-const CLIENT_KEYS = `import { LinkyClient } from "@linky/linky/sdk";
+const CLIENT_KEYS = `import { LinkyClient } from "getalinky/sdk";
 
 const linky = new LinkyClient({ apiKey: process.env.LINKY_API_KEY });
 
@@ -133,7 +133,7 @@ const { apiKeys } = await linky.listKeys();
 // Revoke by numeric id
 await linky.revokeKey(apiKey.id);`;
 
-const CLIENT_ERRORS = `import { LinkyClient, LinkyApiError } from "@linky/linky/sdk";
+const CLIENT_ERRORS = `import { LinkyClient, LinkyApiError } from "getalinky/sdk";
 
 const linky = new LinkyClient({ apiKey: process.env.LINKY_API_KEY });
 
@@ -154,7 +154,7 @@ try {
   throw error;
 }`;
 
-const TOP_LEVEL_BASIC = `const { createLinky } = require("@linky/linky");
+const TOP_LEVEL_BASIC = `const { createLinky } = require("getalinky");
 
 const result = await createLinky({
   urls: ["https://example.com", "https://example.org"],
@@ -168,7 +168,7 @@ if (result.claimUrl) {
   console.log(result.claimUrl);
 }`;
 
-const TOP_LEVEL_POLICY = `const { createLinky } = require("@linky/linky");
+const TOP_LEVEL_POLICY = `const { createLinky } = require("getalinky");
 
 await createLinky({
   urls: ["https://acme.com/docs", "https://acme.com/status"],
@@ -187,7 +187,7 @@ await createLinky({
   },
 });`;
 
-const TOP_LEVEL_UPDATE = `const { updateLinky } = require("@linky/linky");
+const TOP_LEVEL_UPDATE = `const { updateLinky } = require("getalinky");
 
 await updateLinky({
   slug: "abc123",
@@ -213,7 +213,7 @@ export default function DocsSdkPage() {
         SDK reference
       </h1>
       <p className="docs-lede">
-        <code>@linky/linky</code> ships two entry points: a pair of top-level
+        <code>getalinky</code> ships two entry points: a pair of top-level
         convenience functions for one-shot creates and updates, and a full{" "}
         <code>LinkyClient</code> class that mirrors every authed HTTP route.
         Both are plain JS with zero runtime dependencies; the client uses{" "}
@@ -223,7 +223,7 @@ export default function DocsSdkPage() {
       <section className="docs-section">
         <p className="terminal-label">Install</p>
         <pre className="docs-json">
-          <code>npm install @linky/linky</code>
+          <code>npm install getalinky</code>
         </pre>
       </section>
 
@@ -240,7 +240,7 @@ export default function DocsSdkPage() {
             <tbody>
               <tr>
                 <td>
-                  <code>import &#123; createLinky &#125; from &quot;@linky/linky&quot;</code>
+                  <code>import &#123; createLinky &#125; from &quot;getalinky&quot;</code>
                 </td>
                 <td>
                   One-shot creates (anonymous or authed). Zero-config: no
@@ -249,7 +249,7 @@ export default function DocsSdkPage() {
               </tr>
               <tr>
                 <td>
-                  <code>import &#123; updateLinky &#125; from &quot;@linky/linky&quot;</code>
+                  <code>import &#123; updateLinky &#125; from &quot;getalinky&quot;</code>
                 </td>
                 <td>
                   Top-level convenience for a single update call. Requires{" "}
@@ -258,7 +258,7 @@ export default function DocsSdkPage() {
               </tr>
               <tr>
                 <td>
-                  <code>import &#123; LinkyClient &#125; from &quot;@linky/linky/sdk&quot;</code>
+                  <code>import &#123; LinkyClient &#125; from &quot;getalinky/sdk&quot;</code>
                 </td>
                 <td>
                   Anything beyond create/update — <code>getLinky</code>,{" "}

@@ -1,5 +1,5 @@
 {
-  "name": "@linky/linky",
+  "name": "getalinky",
   "version": "0.3.0",
   "description": "Create one short Linky URL that opens a bundle of links.",
   "license": "MIT",
@@ -33,6 +33,7 @@
     "LICENSE"
   ],
   "bin": {
+    "getalinky": "cli/index.js",
     "linky": "cli/index.js",
     "linkie": "cli/index.js"
   },

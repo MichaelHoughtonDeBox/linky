@@ -323,7 +323,7 @@ bundled bridge:
   "mcpServers": {
     "linky": {
       "command": "npx",
-      "args": ["-y", "@linky/linky", "mcp"],
+      "args": ["-y", "getalinky", "mcp"],
       "env": {
         "LINKY_API_KEY": "lkyu_YOUR_PREFIX.YOUR_SECRET",
         "LINKY_BASE_URL": "https://getalinky.com"
@@ -356,12 +356,12 @@ Tracks `main`. Re-run to pick up skill updates when we ship new features.
 ### Option B — bundled with the npm package
 
 ```bash
-npm install @linky/linky
-# The skill lands at node_modules/@linky/linky/skills/linky/SKILL.md
+npm install getalinky
+# The skill lands at node_modules/getalinky/skills/linky/SKILL.md
 # Copy or symlink into your agent's skill folder:
-cp node_modules/@linky/linky/skills/linky/SKILL.md ~/.agents/skills/linky/SKILL.md
+cp node_modules/getalinky/skills/linky/SKILL.md ~/.agents/skills/linky/SKILL.md
 # or for Claude Code:
-cp node_modules/@linky/linky/skills/linky/SKILL.md ~/.claude/skills/linky/SKILL.md
+cp node_modules/getalinky/skills/linky/SKILL.md ~/.claude/skills/linky/SKILL.md
 ```
 
 Locked to whatever version you installed. Bump the package to get skill
@@ -440,7 +440,7 @@ page if they leak or are no longer needed.
 ## Package API
 
 ```js
-const { createLinky } = require("@linky/linky");
+const { createLinky } = require("getalinky");
 
 const result = await createLinky({
   urls: ["https://example.com", "https://example.org"],
@@ -473,7 +473,7 @@ console.log(result.resolutionPolicy);   // present only when a policy was attach
 Authenticated update:
 
 ```js
-const { updateLinky } = require("@linky/linky");
+const { updateLinky } = require("getalinky");
 
 const result = await updateLinky({
   slug: "abc123",
@@ -631,7 +631,7 @@ linky create https://acme.com/docs https://acme.com/status \
 SDK:
 
 ```js
-const { createLinky } = require("@linky/linky");
+const { createLinky } = require("getalinky");
 
 await createLinky({
   urls: ["https://acme.com/docs", "https://acme.com/status"],

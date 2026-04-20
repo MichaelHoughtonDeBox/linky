@@ -12,7 +12,7 @@ const SKILL_COMMAND =
 
 const SKILL_VERIFY = "npx skills list";
 
-const CLI_INSTALL = "npm install -g @linky/linky";
+const CLI_INSTALL = "npm install -g getalinky";
 
 const CLI_VERIFY = "linky --help";
 

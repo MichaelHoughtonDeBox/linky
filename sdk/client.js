@@ -1,10 +1,10 @@
 // Linky external SDK — Sprint 2.8 Chunk 0.
 //
 // Plain JS, zero runtime deps. Uses the global `fetch`. Ships under
-// `@linky/linky/sdk` so consumer apps can import:
+// `getalinky/sdk` so consumer apps can import:
 //
-//   const { LinkyClient, LinkyApiError } = require("@linky/linky/sdk");
-//   import { LinkyClient, LinkyApiError } from "@linky/linky/sdk"; // ESM interop
+//   const { LinkyClient, LinkyApiError } = require("getalinky/sdk");
+//   import { LinkyClient, LinkyApiError } from "getalinky/sdk"; // ESM interop
 //
 // CommonJS on disk on purpose: the package is type:commonjs (no "type"
 // field), the top-level `index.js` and `cli/index.js` are CJS, and Node

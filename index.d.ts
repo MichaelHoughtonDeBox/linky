@@ -134,7 +134,7 @@ export function updateLinky(
 
 // Sprint 2.8 Chunk 0: the full LinkyClient surface is re-exported here so
 // consumers importing from the default entry get the widened API
-// (`import { LinkyClient } from "@linky/linky"`) without switching
-// subpaths. Subpath import (`@linky/linky/sdk`) is the recommended form
+// (`import { LinkyClient } from "getalinky"`) without switching
+// subpaths. Subpath import (`getalinky/sdk`) is the recommended form
 // for new code — see README.
 export { LinkyClient, LinkyApiError } from "./sdk/client";

@@ -691,7 +691,7 @@ export default function DesignSystemPage() {
                   <span className="terminal-code-label">bash</span>
                 </div>
                 <pre className="terminal-code-pre">
-                  <code>{`npx @linky/linky create \\\n  https://example.com \\\n  https://example.org \\\n  --title "Design review"`}</code>
+                  <code>{`npx getalinky create \\\n  https://example.com \\\n  https://example.org \\\n  --title "Design review"`}</code>
                 </pre>
               </div>
             </article>

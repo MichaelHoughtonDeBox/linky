@@ -1,4 +1,4 @@
-// Type definitions for the Linky external SDK (`@linky/linky/sdk`).
+// Type definitions for the Linky external SDK (`getalinky/sdk`).
 //
 // Kept structural — the authoritative shapes live in
 // `src/lib/linky/types.ts`, `src/lib/server/services/*`, and the service

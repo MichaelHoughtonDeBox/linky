@@ -48,7 +48,7 @@ function buildCliPreviewCommand(urls: string[], baseUrl: string): string {
     urls.length > 0 ? urls : ["https://example.com", "https://example.org"];
   const urlArgs = previewUrls.map((url) => quoteForShell(url)).join(" ");
 
-  return `npx @linky/linky create ${urlArgs} --base-url ${quoteForShell(baseUrl)} --json`;
+  return `npx getalinky create ${urlArgs} --base-url ${quoteForShell(baseUrl)} --json`;
 }
 
 function buildCurlPreviewCommand(urls: string[], baseUrl: string): string {

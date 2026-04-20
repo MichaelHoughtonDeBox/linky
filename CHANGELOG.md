@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@linky/linky` are recorded here. The package
+All notable changes to `getalinky` are recorded here. The package
 tracks the Linky hosted product's feature surface — every release widens
 the CLI / SDK / MCP surfaces to match what `getalinky.com` already
 supports.
@@ -12,6 +12,16 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 **First public npm release.** The 0.2.0 entry below was a pre-release
 baseline; this is the first version actually published to the registry.
+Package name is `getalinky` — matches the `getalinky.com` domain. The
+earlier internal `@linky/linky` scoped name was never published, so no
+rename-in-registry is needed.
+
+### Changed — package identity
+
+- **Package name**: `getalinky` (unscoped). `npm install getalinky`.
+- **Bin names**: `getalinky` (primary), `linky`, `linkie` (compat).
+  All three dispatch to the same CLI — pick whichever reads best in
+  your terminal, config, or README.
 
 ### Added — bearer auth + scoped API keys (Sprints 2.6 + 2.7)
 
@@ -78,7 +88,7 @@ baseline; this is the first version actually published to the registry.
 
 ### Added — `LinkyClient` SDK class + typed errors (Sprint 2.8 Chunk 0)
 
-- **`import { LinkyClient, LinkyApiError } from "@linky/linky/sdk"`** —
+- **`import { LinkyClient, LinkyApiError } from "getalinky/sdk"`** —
   plain JS, zero runtime deps. One method per authed HTTP route
   (`createLinky`, `getLinky`, `listLinkies`, `updateLinky`,
   `deleteLinky`, `getVersions`, `getInsights`, `whoami`, `listKeys`,

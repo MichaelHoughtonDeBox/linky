@@ -4,7 +4,7 @@
 //
 // Harnesses that only speak stdio MCP (older Claude Desktop builds, some
 // Codex configs, anything that predates the March 2025 Streamable-HTTP
-// transport) still get full Linky access by running `npx @linky/linky
+// transport) still get full Linky access by running `npx getalinky
 // mcp`. This process:
 //
 //   1. Opens a Streamable-HTTP MCP CLIENT transport against
@@ -91,7 +91,7 @@ function printHelp() {
 
 This process exposes Linky's tools over stdio MCP for harnesses that do
 not speak the Streamable-HTTP transport directly. Point an agent config
-at: npx -y @linky/linky mcp
+at: npx -y getalinky mcp
 
 Required env:
   LINKY_API_KEY    Bearer API key (lkyu_* or lkyo_*). Mint one at
@@ -106,7 +106,7 @@ Example claude_desktop_config.json entry:
     "mcpServers": {
       "linky": {
         "command": "npx",
-        "args": ["-y", "@linky/linky", "mcp"],
+        "args": ["-y", "getalinky", "mcp"],
         "env": {
           "LINKY_API_KEY": "lkyu_your_prefix.your_secret",
           "LINKY_BASE_URL": "${DEFAULT_BASE_URL}"
