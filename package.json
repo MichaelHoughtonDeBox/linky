@@ -25,6 +25,7 @@
     "sdk/client.d.ts",
     "sdk/index.js",
     "sdk/index.d.ts",
+    "skills/linky/SKILL.md",
     "index.js",
     "index.d.ts",
     "README.md",

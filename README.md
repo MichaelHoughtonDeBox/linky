@@ -340,16 +340,32 @@ rate-limit bucket (default 1000/hr; `0` = unlimited).
 
 ## Skill Install (for model workflows)
 
+The Linky agent skill (`skills/linky/SKILL.md`) teaches an LLM how to use
+every Linky surface — MCP tools, CLI commands, SDK methods, raw HTTP —
+with scope + rate-limit guidance baked in. Two install paths:
+
+### Option A — `npx skills add` (fetches from GitHub HEAD)
+
 ```bash
-# Install the Linky skill from the GitHub repository.
 npx skills add https://github.com/MichaelHoughtonDeBox/linky --skill linky
-```
-
-Verify:
-
-```bash
 npx skills list
 ```
+
+Tracks `main`. Re-run to pick up skill updates when we ship new features.
+
+### Option B — bundled with the npm package
+
+```bash
+npm install @linky/linky
+# The skill lands at node_modules/@linky/linky/skills/linky/SKILL.md
+# Copy or symlink into your agent's skill folder:
+cp node_modules/@linky/linky/skills/linky/SKILL.md ~/.agents/skills/linky/SKILL.md
+# or for Claude Code:
+cp node_modules/@linky/linky/skills/linky/SKILL.md ~/.claude/skills/linky/SKILL.md
+```
+
+Locked to whatever version you installed. Bump the package to get skill
+updates.
 
 ## CLI
 
