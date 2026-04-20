@@ -76,20 +76,83 @@ Every request resolves to one of three subjects (`src/lib/server/auth.ts`):
 ```ts
 type AuthSubject =
   | { type: "anonymous" }
-  | { type: "user"; userId: string }
-  | { type: "org"; orgId: string; userId: string; role: string | null };
+  | { type: "user"; userId: string; scopes?: ApiKeyPermission[] }
+  | { type: "org"; orgId: string; userId: string | null; role: string | null; scopes?: ApiKeyPermission[] };
 ```
 
-- **`getAuthSubject()`** — safe everywhere, returns `anonymous` when no Clerk session.
-- **`requireAuthSubject()`** — throws `AuthRequiredError` if anonymous; use in owner-only routes.
-- **`canEditLinky(subject, ownership)` / `requireCanEditLinky(...)`** — the one place ownership rules live. Test coverage is exhaustive in `src/lib/server/auth.test.ts`. Add new edge cases there, never inline.
+Two auth paths resolve to the same `AuthSubject` shape:
+
+1. **Clerk browser session** → `{ userId, orgId?, role? }`; `scopes` is
+   `undefined` because signed-in humans are not scope-limited.
+2. **Bearer API key** (`Authorization: Bearer lkyu_<prefix>.<secret>`) →
+   same shape, but `scopes` is the key's stored array
+   (`["links:read"]` / `["links:write"]` / `["keys:admin"]`). Org-scoped
+   keys set `userId: null` so they cannot bleed into user-owned
+   resources.
+
+Both paths go through `src/lib/server/auth.ts`:
+
+- **`getAuthSubject(request)`** — safe everywhere, returns `anonymous`
+  when no session and no bearer.
+- **`requireAuthSubject(request)`** — throws `AuthRequiredError` if
+  anonymous; the common HTTP-route entrypoint.
+- **`authenticateBearerToken(request)`** — MCP-only (`/api/mcp`).
+  Rejects session fallback; 401 if no bearer.
+
+### Ownership + role + scope matrix
+
+Sprint 2.7 introduced role-aware access control for org-owned Linkies,
+derived from `memberships.role` via `deriveMembershipRole()`:
+
+| Derived role | Matches Clerk role | Can view | Can edit | Can admin |
+|---|---|---|---|---|
+| `admin` | `org:admin` | ✓ | ✓ | ✓ |
+| `editor` | `org:member` + `linky:editor:*` custom roles | ✓ | ✓ | ✗ |
+| `viewer` | anything else (incl. unknown custom roles) | ✓ | ✗ | ✗ |
+
+Ownership helpers (all in `src/lib/server/auth.ts`, exhaustively tested
+in `auth.test.ts`):
+
+- **`canViewLinky(subject, ownership, role)`** — view access check.
+- **`canEditLinky(subject, ownership, role)`** — PATCH gate.
+- **`canAdminLinky(subject, ownership, role)`** — DELETE + key-management gate.
+- **`requireCan*Linky(...)`** variants throw `ForbiddenError`.
+- **`subjectHasScope(subject, scope)`** — scope gate for bearer subjects.
+  Session subjects always return `true` (humans are not scope-limited).
+- **`requireScope(subject, scope)`** — throws `ForbiddenError` naming the
+  missing scope.
+
+Add new edge cases to `auth.test.ts`, never inline. The matrix is dense
+(3 subjects × 3 roles × 3 ownership shapes × 3 actions); tests encode the
+27 non-equivalent cells.
+
+### Scopes (Sprint 2.7 Chunk D)
+
+`api_keys.scopes` is a `jsonb` array constrained to an allow-list:
+`links:read`, `links:write`, `keys:admin`. Implication is resolved at
+runtime by `expandScopes()` in `src/lib/server/api-keys.ts`:
+
+- `links:write` implies `links:read`.
+- `keys:admin` implies `links:write` + `links:read`.
+
+**Scope is immutable once minted.** Changing a key's scope requires
+revoke + re-issue. This keeps the threat model simple — no "quietly
+escalated" keys.
 
 ### Ownership rules (strict)
 
-- **Anonymous Linkies are immutable.** Both owner columns NULL → no edit, no delete, ever. Preserves the trust model: a shared public Linky will never change under its consumers.
-- **Org context wins over user context at create time.** If the caller has an active Clerk org, ownership goes to the org (team-owned). Only falls back to user when no org is active.
-- **Org-owned Linkies are editable by any member** of that org (role-based restrictions are a future sprint). A user must have the org as their **active** Clerk context to edit — ambient membership is intentionally not enough.
-- **The only way to claim an anonymous Linky** is the `claim_tokens` flow via `/claim/[token]`. Do not add backdoors.
+- **Anonymous Linkies are immutable.** Both owner columns NULL → no
+  edit, no delete, ever. Preserves the trust model: a shared public
+  Linky will never change under its consumers.
+- **Org context wins over user context at create time.** If the caller
+  has an active Clerk org (or an org-scoped bearer), ownership goes to
+  the org. Only falls back to user when no org is active.
+- **Org-owned Linkies respect the role matrix above.** Editors and
+  admins can PATCH; only admins can DELETE. A user must have the org as
+  their **active** Clerk context to edit — ambient membership is
+  intentionally not enough.
+- **The only way to claim an anonymous Linky** is the `claim_tokens`
+  flow via `/claim/[token]`. Do not add backdoors.
 
 ---
 
@@ -103,6 +166,139 @@ Data access lives in `src/lib/server/*-repository.ts`. Rules:
 - Normalize DB rows through a `mapDbRow` function so the rest of the app sees domain types, not Postgres shapes.
 - **Mutations that touch multiple rows run in a transaction** with `FOR UPDATE` row locks. See `patchLinkyRecord` and `consumeClaimToken` for the pattern.
 - Return tagged result unions for expected failure modes (`{ status: "expired" }`, `{ status: "already-owned" }`, etc.). Throw only for unexpected errors — never for control flow.
+
+### SQL parameter-numbering gotcha
+
+If a helper returns a clause fragment with `$N` placeholders AND a caller
+prepends its own parameters to the same query, you must offset the
+placeholder numbering. Sprint 2.8's Bug #4 shipped a revoke query with
+`WHERE id = $1 AND ${ownership.clause}` where the ownership clause also
+used `$1` — producing a collision where `$1` was bound to both the key
+id (integer) and the owner column (text). Every revoke 500'd in prod.
+
+See `subjectOwnershipClause(subject, paramOffset)` in `api-keys.ts` for
+the pattern. Callers that prepend parameters MUST pass their own offset.
+
+---
+
+## Service layer (Sprint 2.8 Chunk 0)
+
+Every authed HTTP route delegates to a named function in
+`src/lib/server/services/`:
+
+| File | Exports |
+|---|---|
+| `linkies-service.ts` | `createLinky`, `getLinky`, `listLinkies`, `updateLinky`, `deleteLinky`, `getLinkyVersions` |
+| `insights-service.ts` | `getLinkyInsights` |
+| `keys-service.ts` | `listKeys`, `createKey`, `revokeKey`, `whoAmIIdentity` |
+
+### Shape rules for service functions
+
+- Signature: `(input, subject) => Promise<DTO>`.
+- **All authorization happens inside the service**: `requireScope()`,
+  `requireCanViewLinky()`, `requireCanEditLinky()`, etc. Routes must
+  not re-check — that's how gates drift.
+- Throw typed errors: `LinkyError`, `AuthRequiredError`,
+  `ForbiddenError`. Never a raw `Error` for control flow.
+- Return DTOs (`src/lib/server/services/*-service.ts` exports `*Dto`
+  types) — not DB rows, not `ApiKeyRecord`, not `LinkyRecord`.
+
+### Why this layer exists
+
+1. **HTTP route + MCP tool share one implementation.** The MCP handlers
+   in `src/app/api/mcp/tools/handlers.ts` call the same service
+   functions. No HTTP round-trip, no duplication, no drift.
+2. **Tests hit services directly.** `linkies-service.test.ts` and
+   `keys-service.test.ts` cover the auth matrix + DTO shape without
+   standing up the full Next.js route.
+3. **External SDK (`sdk/client.js`) talks over HTTP to the routes,
+   which talk to the services.** The three transports (CLI, SDK, MCP)
+   converge on the same ground truth.
+
+### Route wrapper pattern (every authed route looks like this)
+
+```ts
+export async function GET(request: NextRequest, ctx: RouteContext) {
+  try {
+    const { slug } = await ctx.params;
+    const subject = await requireAuthSubject(request);
+    const dto = await getLinky({ slug }, subject);
+    return Response.json(dto);
+  } catch (error) {
+    if (isKnownServerError(error)) return toErrorResponse(error);
+    return toErrorResponse(new LinkyError(
+      "Unexpected server error while reading Linky.",
+      { code: "INTERNAL_ERROR", statusCode: 500 },
+    ));
+  }
+}
+```
+
+Do not put business logic in the route. If you're tempted to, the logic
+belongs in the service.
+
+---
+
+## MCP server (Sprint 2.8)
+
+`/api/mcp` exposes every authed route as an MCP tool via the
+Streamable-HTTP transport. Lives in `src/app/api/mcp/`:
+
+| File | Purpose |
+|---|---|
+| `route.ts` | POST handler; auths bearer, spins up a per-request MCP server, registers tools, runs the JSON-RPC transport. Stateless by design. |
+| `tools/definitions.ts` | 11 tool JSON Schemas (all `additionalProperties: false`). Authoritative input shape. |
+| `tools/handlers.ts` | One handler per tool; each is a thin wrapper over a service function. |
+| `tools/errors.ts` | Service-error → MCP-JSON-RPC-error mapping (`-32001..-32004` + `-32602/-32603`). |
+| `tools/index.ts` | Re-exports definitions + handlers. |
+| `mcp.test.ts` | Registry invariants + error mapping + handler behavior. |
+
+### Rules for adding a new MCP tool
+
+1. Add a service function (or reuse one) that takes
+   `(input, AuthenticatedSubject) → Promise<DTO>`.
+2. Add a strict JSON Schema in `tools/definitions.ts` with
+   `additionalProperties: false`.
+3. Add a handler in `tools/handlers.ts` that does input validation
+   (`requireString`, `requireInteger`) + calls the service + wraps
+   the result in `toText(dto)`.
+4. Register the handler in `toolHandlers` at the bottom of
+   `handlers.ts` and the registry in `index.ts`.
+5. **Update `src/app/docs/mcp/page.tsx`** with the tool row + an
+   example.
+6. **Update the `linky` usage skill** (in `skills/linky/SKILL.md` and
+   the three sync copies) with the new tool row.
+
+### Rules for adding a new HTTP route
+
+Every new authed route goes through the service layer and gets a
+corresponding MCP tool — do not add an endpoint without its MCP
+counterpart unless there's a specific reason (e.g. a browser-side
+ping that's meaningless for agents). Document the reason in the plan
+doc.
+
+---
+
+## Rate limits (Sprint 2.8 Chunk D)
+
+Two rate-limit paths, both in-memory (`src/lib/server/rate-limit.ts`):
+
+1. **Anonymous IP bucket** — `LINKY_RATE_LIMIT_*` env vars. Applies to
+   `POST /api/links` (unauthed) and `POST /api/links/:slug/events`
+   (browser Open All pings).
+2. **Per-key hourly bucket** — `api_keys.rate_limit_per_hour` column.
+   Applies to every authenticated request (HTTP, SDK, CLI, MCP).
+   Enforced inside `authenticateApiKey` after auth succeeds.
+
+Both reuse `checkRateLimit(bucketKey, config)`. The bucket Map attaches
+to `globalThis.__linkyRateLimitBuckets` so Next.js hot-reloads don't
+reset it. Horizontal scaling fragments the buckets across instances —
+documented risk, accepted at current scale, to be revisited with paid
+plans.
+
+Exhausted buckets surface as `RateLimitError` with `retryAfterSeconds`,
+which the HTTP layer emits as 429 + `Retry-After` header + JSON body
+`retryAfterSeconds`, and the MCP layer maps to JSON-RPC code `-32004`.
 
 ---
 
@@ -140,6 +336,17 @@ Every time you write a migration, the rollout order is **fixed**:
 
 Never rely on "Vercel will run the migration for us" — we do not, by design, auto-run migrations on boot. The human or the Neon MCP is the migration runner.
 
+### Shipped migrations (current as of Sprint 2.8)
+
+| # | File | Ships |
+|---|---|---|
+| 002 | `002_auth_ownership.sql` | identity mirror, linkies, linky_versions, claim_tokens, entitlements, memberships |
+| 003 | `003_resolution_policy_history.sql` | `linkies.resolution_policy`, `linky_versions.resolution_policy` |
+| 004 | `004_api_keys.sql` | `api_keys` table (Sprint 2.6 bearer auth) |
+| 005 | `005_launcher_events.sql` | `launcher_events` table (Sprint 2.7 analytics) |
+| 006 | `006_api_key_scopes.sql` | `api_keys.scopes` JSONB (Sprint 2.7 Chunk D) |
+| 007 | `007_api_key_rate_limits.sql` | `api_keys.rate_limit_per_hour` INT (Sprint 2.8 Chunk D) |
+
 ### Local env gotcha
 
 `.env.local` stores `DATABASE_URL` with query parameters that include `&` (Neon's `channel_binding=require&sslmode=require`). `source .env.local` will choke on the ampersand. To run `psql` directly against the local env, use:
@@ -149,6 +356,10 @@ export DATABASE_URL=$(grep '^DATABASE_URL=' .env.local | cut -d= -f2-)
 ```
 
 `npm run db:migrate` doesn't hit this because it reads `DATABASE_URL` from the already-exported shell env, not by parsing `.env.local` itself — so either export via the snippet above, or run migrations via the Neon SQL console / MCP and skip the shell entirely.
+
+`.env.example` **is tracked** in git (Sprint 2.8 post-launch docs sweep
+allowlisted it via `!.env.example`); keep it in sync whenever you add or
+rename an environment variable a self-hoster needs.
 
 ---
 
@@ -250,6 +461,13 @@ Linky, and cannot be recovered via any other endpoint.
 - **Do not add an endpoint that re-issues a claim token for an existing anonymous Linky.** Breaks the one-shot contract. If you need a recovery flow, design it against `creator_fingerprint` with explicit product review.
 - **Do not put side effects inside `evaluatePolicy`.** The evaluator is pure by contract — no DB, no Clerk, no clock. Tests rely on it. If you need a field the DSL doesn't expose, add it to `ViewerContext` + `viewer-context.ts` first, then reference it in a new leaf operator.
 - **Do not ship `linky.resolutionPolicy` to public clients.** Owner-only DTOs can echo it (the dashboard editor needs it); `/l/[slug]` only forwards the resolved tabs. Leaking the policy leaks the owner's audience taxonomy.
+- **Do not call `headers()` / `auth()` inside `after()`.** Sprint 2.8's Bug #3 (every view event silently dropped for ~2 weeks in prod) was exactly this. Both are request-scoped and reject after the response closes. Capture values synchronously **before** calling `after()`, pass them as closure values. See `src/app/l/[slug]/page.tsx` for the pattern.
+- **Do not put business logic in HTTP route files.** Routes are thin wrappers: parse → auth → call service → serialize. Logic lives in `src/lib/server/services/`. If you find yourself writing the same thing in a route and an MCP handler, extract to the service.
+- **Do not add an MCP tool without a matching service function.** The tool handler should be ~5 lines: validate args + call service + wrap result. If it's longer, the logic belongs in a service.
+- **Do not hand-code scope checks in routes.** Use `requireScope(subject, "links:read")` etc. inside the service. Scope implication (`links:write` implies `links:read`) is resolved by `expandScopes()` — don't reimplement.
+- **Do not mutate `api_keys.scopes` after mint.** Scope is locked by design. To change it, revoke + re-issue.
+- **Do not write raw `LINKY_DAILY_SALT` anywhere but the `viewer_hash_day` computation.** The salt is the privacy guarantee for `launcher_events`. If you find yourself logging or storing it elsewhere, stop.
+- **Do not concatenate SQL clauses with placeholders without tracking the offset.** Sprint 2.8 Bug #4 shipped a `$1` collision that 500'd every revoke. Helpers that emit clauses with placeholders take a `paramOffset` argument; callers must pass the count of parameters already consumed.
 
 ---
 
@@ -258,13 +476,20 @@ Linky, and cannot be recovered via any other endpoint.
 | You want to | Start here |
 |---|---|
 | Change the auth/ownership rules | `src/lib/server/auth.ts` + `src/lib/server/auth.test.ts` |
+| Add a scope or change scope implication | `src/lib/server/api-keys.ts` (`expandScopes`, `normalizeScopes`, `parseScopesInput`) + `src/lib/server/api-keys.test.ts` |
+| Change the role derivation (admin/editor/viewer) | `src/lib/server/auth.ts` → `deriveMembershipRole` + matrix test |
+| Add business logic for an existing route | `src/lib/server/services/*-service.ts` (the route is a thin wrapper) |
 | Add a new column to Linkies | New file in `db/migrations/` (see `002_auth_ownership.sql`) + update `db/schema.sql` |
-| Add a new API route | `src/app/api/.../route.ts` — read `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md` first |
+| Add a new API route | `src/app/api/.../route.ts` (thin wrapper) + `src/lib/server/services/*` for the logic — read `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md` first |
+| Add a new MCP tool | `src/app/api/mcp/tools/definitions.ts` (schema) + `handlers.ts` (handler) + register in `index.ts` + update `/docs/mcp` + update the `linky` usage skill |
+| Change rate-limit behavior | `src/lib/server/api-keys.ts` (`authenticateApiKey` reads the column) + `src/lib/server/rate-limit.ts` (in-memory bucket) |
 | Change user-visible copy | Dashboard: `src/app/dashboard/*`; Homepage: `src/app/page.tsx` + `src/components/site/live-linky-demo.tsx`; Sign-in/up: `src/app/sign{in,up}/[[...sign-*]]/page.tsx`; README |
+| Change public docs | `src/app/docs/*/page.tsx` (sidebar: `src/components/site/docs-sidebar.tsx`) |
 | Change how Clerk users land in our DB | `src/app/api/webhooks/clerk/route.ts` + `src/lib/server/identity-repository.ts` |
 | Work on the claim flow | `src/app/claim/[token]/page.tsx` + `src/lib/server/claim-tokens.ts` |
 | Extend the resolution policy DSL | `src/lib/linky/policy.ts` (types + parser + evaluator) + `src/lib/linky/policy.test.ts` (matrix) + `src/lib/server/viewer-context.ts` if the new field needs Clerk data |
-| Update the CLI | `cli/index.js` + `index.js` (SDK) + `index.d.ts` (types) |
+| Update the CLI | `cli/index.js` (dispatcher) + `cli/linkies.js` / `cli/keys.js` (command groups) + `sdk/client.js` (HTTP transport) + `sdk/client.d.ts` (types) + `index.js` (top-level wrapper) |
+| Add analytics to the launcher | `src/lib/server/launcher-events-repository.ts` (write path) + `src/lib/server/services/insights-service.ts` (aggregation) + `LINKY_DAILY_SALT` env var |
 
 ---
 
