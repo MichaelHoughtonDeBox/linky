@@ -144,13 +144,31 @@ content-type: application/json
   "matchedRuleId": "01J..."   # optional; pass null for fallthrough
 }`;
 
+const GET_ONE_RES = `{
+  "slug": "x8q2m4k",
+  "urls": ["https://example.com", "https://example.org"],
+  "urlMetadata": [
+    { "note": "PR under review", "tags": ["eng"] },
+    { "note": "Preview deploy", "openPolicy": "desktop" }
+  ],
+  "title": "Release review bundle",
+  "description": "Open everything needed for the 2026.04 standup.",
+  "owner": { "type": "user", "userId": "user_…" },
+  "createdAt": "2026-04-16T12:00:00.000Z",
+  "updatedAt": "2026-04-16T12:00:00.000Z",
+  "source": "agent",
+  "metadata": null,
+  "resolutionPolicy": { "version": 1, "rules": [] }
+}`;
+
 const KEYS_POST_REQ = `POST /api/me/keys
 content-type: application/json
 # org subjects: admin role required
 
 {
   "name": "release-bot",
-  "scopes": ["links:read"]    # optional; defaults to ["links:write"]
+  "scopes": ["links:read"],       # optional; defaults to ["links:write"]
+  "rateLimitPerHour": 200         # optional; 0 = unlimited, default 1000, cap 100000
 }`;
 
 const KEYS_POST_RES = `{
@@ -160,12 +178,48 @@ const KEYS_POST_RES = `{
     "scope": "user",
     "scopes": ["links:read"],
     "keyPrefix": "lkyu_a1b2c3d4",
+    "rateLimitPerHour": 200,
     "createdAt": "2026-04-18T12:00:00.000Z",
     "lastUsedAt": null,
     "revokedAt": null
   },
   "rawKey": "lkyu_a1b2c3d4.shown-once-cannot-be-recovered",
   "warning": "Save this API key now — it is shown only once and cannot be recovered."
+}`;
+
+const KEYS_GET_RES = `{
+  "apiKeys": [
+    {
+      "id": 42,
+      "name": "release-bot",
+      "scope": "user",
+      "scopes": ["links:read"],
+      "keyPrefix": "lkyu_a1b2c3d4",
+      "rateLimitPerHour": 200,
+      "createdAt": "2026-04-18T12:00:00.000Z",
+      "lastUsedAt": "2026-04-19T09:12:33.000Z",
+      "revokedAt": null
+    }
+  ],
+  "subject": { "type": "user", "userId": "user_…" }
+}`;
+
+const KEYS_DELETE_REQ = `DELETE /api/me/keys?id=42
+# no request body — id is passed as a query parameter
+# org subjects: admin role required; bearer callers need keys:admin scope`;
+
+const KEYS_DELETE_RES = `{
+  "apiKey": {
+    "id": 42,
+    "name": "release-bot",
+    "scope": "user",
+    "scopes": ["links:read"],
+    "keyPrefix": "lkyu_a1b2c3d4",
+    "rateLimitPerHour": 200,
+    "createdAt": "2026-04-18T12:00:00.000Z",
+    "lastUsedAt": "2026-04-19T09:12:33.000Z",
+    "revokedAt": "2026-04-19T10:00:00.000Z"
+  }
 }`;
 
 export default function DocsApiPage() {
@@ -198,6 +252,26 @@ export default function DocsApiPage() {
           Signed-in responses omit every <code>claim*</code> field and the{" "}
           <code>warning</code>. See <Link href="/docs/create">Create</Link>{" "}
           for the full request-body table and error codes.
+        </p>
+      </section>
+
+      <section className="docs-section">
+        <p className="terminal-label">GET /api/links/:slug (view+)</p>
+        <p>
+          Read a single Linky by slug. Returns the full DTO including{" "}
+          <code>urls</code>, <code>urlMetadata</code>, <code>owner</code>,{" "}
+          <code>resolutionPolicy</code>, and timestamps. Any role with view
+          access can read. Bearer callers need the <code>links:read</code>{" "}
+          scope.
+        </p>
+        <pre className="docs-json">
+          <code>{GET_ONE_RES}</code>
+        </pre>
+        <p>
+          Anonymous viewers see nothing here — this route is owner-scoped,
+          not the public launcher. The public read path is{" "}
+          <code>GET /l/:slug</code> (HTML). Soft-deleted Linkies return
+          404.
         </p>
       </section>
 
@@ -329,7 +403,7 @@ export default function DocsApiPage() {
       </section>
 
       <section id="scoped-keys" className="docs-section">
-        <p className="terminal-label">POST /api/me/keys — scoped API keys (admin)</p>
+        <p className="terminal-label">POST /api/me/keys — mint a scoped API key (keys:admin)</p>
         <p>
           Mint an API key for automation. Org admins mint team keys;
           individual users mint personal keys. Scope is locked at mint —
@@ -349,6 +423,14 @@ export default function DocsApiPage() {
             revoking other keys. Treat like a root credential.
           </li>
         </ul>
+        <p>
+          <code>rateLimitPerHour</code> caps the authenticated requests
+          this key can make per 60-minute window. Defaults to 1000; valid
+          range 0–100000 where <code>0</code> disables the limit (reserve
+          for admin / internal keys). Exhausted keys return HTTP 429 with{" "}
+          <code>retryAfterSeconds</code> in the JSON body. See{" "}
+          <Link href="/docs/limits">Limits</Link>.
+        </p>
         <pre className="docs-json">
           <code>{KEYS_POST_REQ}</code>
         </pre>
@@ -357,11 +439,52 @@ export default function DocsApiPage() {
         </pre>
         <p>
           The <code>rawKey</code> is returned once. Paste it into your
-          secret store immediately — no endpoint reveals it again. Call
-          this endpoint with <code>GET</code> to list keys (never returns
-          raw secrets) or <code>DELETE ?id=&lt;keyId&gt;</code> to revoke.
-          On org subjects, all three methods require admin role + the{" "}
-          <code>keys:admin</code> scope for bearer callers.
+          secret store immediately — no endpoint reveals it again.
+        </p>
+      </section>
+
+      <section className="docs-section">
+        <p className="terminal-label">GET /api/me/keys — list + whoami (keys:admin)</p>
+        <p>
+          Returns every key owned by the caller (user or active org),
+          plus the resolved subject descriptor. Revoked keys are included
+          with <code>revokedAt</code> populated so you can audit past
+          credentials. Raw secrets are never re-returned. The CLI&apos;s{" "}
+          <code>linky auth whoami</code> uses this endpoint as the auth
+          probe.
+        </p>
+        <pre className="docs-json">
+          <code>{KEYS_GET_RES}</code>
+        </pre>
+      </section>
+
+      <section className="docs-section">
+        <p className="terminal-label">DELETE /api/me/keys — revoke a key (keys:admin)</p>
+        <p>
+          Revokes the named key by numeric <code>id</code>, passed as a
+          query parameter (not a path segment). Idempotent: already-revoked
+          keys return their existing <code>revokedAt</code>. Ownership is
+          enforced server-side — you can only revoke keys your own subject
+          owns.
+        </p>
+        <pre className="docs-json">
+          <code>{KEYS_DELETE_REQ}</code>
+        </pre>
+        <pre className="docs-json">
+          <code>{KEYS_DELETE_RES}</code>
+        </pre>
+      </section>
+
+      <section className="docs-section">
+        <p className="terminal-label">POST /api/mcp — agent-facing transport</p>
+        <p>
+          Every authed route in this reference is also exposed as an MCP
+          tool via Streamable-HTTP at <code>/api/mcp</code>. Agents in
+          Cursor, Claude Desktop, Codex, Continue, and Cline connect with
+          a bearer token in the <code>Authorization</code> header; no
+          additional plumbing is needed. See{" "}
+          <Link href="/docs/mcp">MCP</Link> for the tool catalog and
+          paste-ready <code>mcp.json</code> config for each harness.
         </p>
       </section>
 
@@ -441,8 +564,12 @@ export default function DocsApiPage() {
                   <code>RATE_LIMITED</code>
                 </td>
                 <td>
-                  Anonymous create rate limit exceeded. See{" "}
-                  <Link href="/docs/limits">Limits</Link>.
+                  Either the anonymous create IP rate limit, or a bearer
+                  key&apos;s per-hour <code>rateLimitPerHour</code> bucket
+                  was exhausted. The response body includes{" "}
+                  <code>retryAfterSeconds</code>; SDK callers read{" "}
+                  <code>LinkyApiError.retryAfterSeconds</code> directly.
+                  See <Link href="/docs/limits">Limits</Link>.
                 </td>
               </tr>
               <tr>

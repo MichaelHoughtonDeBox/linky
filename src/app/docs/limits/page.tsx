@@ -138,10 +138,12 @@ export default function DocsLimitsPage() {
       </section>
 
       <section className="docs-section">
-        <p className="terminal-label">Anonymous create rate limit</p>
+        <p className="terminal-label">Anonymous create rate limit (IP)</p>
         <p>
-          Applies only to unauthenticated <code>POST /api/links</code>, keyed
-          by client IP. Signed-in callers are exempt.
+          Applies to the unauthenticated <code>POST /api/links</code> path
+          and the <code>POST /api/links/:slug/events</code> Open All ping,
+          keyed by client IP. Authenticated callers use the per-key bucket
+          below instead.
         </p>
         <div className="docs-table-wrap">
           <table className="docs-table">
@@ -177,9 +179,82 @@ export default function DocsLimitsPage() {
         </p>
       </section>
 
+      <section className="docs-section">
+        <p className="terminal-label">Per-key rate limit (bearer)</p>
+        <p>
+          Every authenticated request — HTTP, SDK, CLI, or MCP — counts
+          against the API key&apos;s per-hour bucket. Keys are minted with
+          a default of 1000 requests per 60-minute rolling window; the
+          dashboard and <code>POST /api/me/keys</code> both accept a
+          custom <code>rateLimitPerHour</code> at mint time.
+        </p>
+        <div className="docs-table-wrap">
+          <table className="docs-table">
+            <thead>
+              <tr>
+                <th>Setting</th>
+                <th>Value</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Default</td>
+                <td>1000 / hour</td>
+                <td>
+                  Sized so no legitimate agent workflow hits it, but a
+                  runaway loop 429s within seconds.
+                </td>
+              </tr>
+              <tr>
+                <td>Minimum</td>
+                <td>0</td>
+                <td>
+                  <code>0</code> disables the limit entirely. Reserve for
+                  admin / internal keys you control end-to-end.
+                </td>
+              </tr>
+              <tr>
+                <td>Maximum</td>
+                <td>100,000 / hour</td>
+                <td>
+                  Hard cap on <code>POST /api/me/keys</code>. Contact us
+                  if you need higher in a hosted deployment.
+                </td>
+              </tr>
+              <tr>
+                <td>Window</td>
+                <td>Rolling 60 minutes</td>
+                <td>
+                  Per-key bucket, independent of every other key. Each key
+                  burns its own quota.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Exhausted keys get HTTP <code>429</code> with{" "}
+          <code>code: &quot;RATE_LIMITED&quot;</code> and{" "}
+          <code>retryAfterSeconds</code> in the JSON body (and the{" "}
+          <code>Retry-After</code> response header). The MCP surface maps
+          this to JSON-RPC error code <code>-32004</code> with the same
+          payload. The SDK&apos;s <code>LinkyApiError</code> exposes{" "}
+          <code>retryAfterSeconds</code> directly — switch on the code,
+          sleep the seconds, retry.
+        </p>
+        <p>
+          Self-hosted instances today share a single in-memory bucket per
+          Node process; the numbers fragment across horizontally-scaled
+          instances. A Redis-backed bucket is a Sprint 3 follow-up for the
+          paid plan tiers.
+        </p>
+      </section>
+
       <nav className="docs-next" aria-label="Next steps">
         <span>Next:</span>
         <Link href="/docs/api">API reference</Link>
+        <Link href="/docs/mcp">MCP</Link>
         <Link href="/docs/personalize">Personalize</Link>
       </nav>
     </>

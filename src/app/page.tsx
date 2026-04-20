@@ -42,7 +42,7 @@ const FAQ_ITEMS = [
   {
     question: "Can my agent create Linky links directly?",
     answer:
-      "Yes. Agents can call the public HTTP API, run the CLI, or use the npm SDK. A Cursor / Claude Code skill is already shipped, and an MCP server is on the roadmap.",
+      "Yes — four paths. Drop the Linky MCP into Cursor, Claude Desktop, Codex, Continue, or Cline with a paste-ready mcp.json and your agent can call create, update, list, insights, and key management as first-class tools. Or use the public HTTP API, the CLI, or the npm SDK directly — every surface shares one service layer, so the shapes match. See /docs/mcp for the MCP config snippets.",
   },
   {
     question: "How does personalization work?",
